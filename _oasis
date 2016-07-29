@@ -1,0 +1,20 @@
+Name: lambda-gbc
+Version: 0.1
+Authors: Rijnard
+License: MIT
+Synopsis: GBC Emulator
+OASISFormat: 0.4
+BuildTools: ocamlbuild
+Plugins: META (0.4), DevFiles (0.4)
+BuildDepends: ppx_jane, core_kernel, lambda-term
+
+Executable render
+  Path: src/render
+  MainIs: main.ml
+  CompiledObject: best
+
+Executable emulator
+  Path: src/emulator
+  MainIs: driver.ml
+  CompiledObject: best
+  BuildDepends: bap, ctypes, cmdliner
