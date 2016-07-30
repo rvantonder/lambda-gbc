@@ -168,6 +168,7 @@ class context image options = object(self : 's)
     | _ -> ()
 
   method dump_vram =
+    printf "In DUM VRAM\n%!";
     match self#lookup (Z80_env.mem) with
     | Some result ->
       (match Bil.Result.value result with
@@ -176,8 +177,8 @@ class context image options = object(self : 's)
            match storage#load addr with
            | Some word when addr_int >= 0x8000 && addr_int < 0xa000 &&
                             (Word.to_int word |> ok_exn) <> 0 ->
-             if options.di then
-               printf "\t\t%a -> %a\n" Addr.pp addr Word.pp word
+             (*if options.di then*)
+             printf "\t\t%a -> %a\n" Addr.pp addr Word.pp word
            | _ -> ())
        | _ -> ())
     | _ -> ()
@@ -405,54 +406,16 @@ let print_bot () =
   printf "└%s┘" s
 
 let render options ctxt =
+  let open Lwt in
   match ctxt#lookup (Z80_env.mem) with
   | Some result ->
     (match Bil.Result.value result with
      | Bil.Mem storage ->
        (*Z80_image.dump_vram storage*)
-       if options.no_render then ()
+       if options.no_render then return ()
        else Screen.render options storage
-     | _ -> ())
-  | _ -> ()
-
-(** Listen for IO after checking for interrupts, every instruction *)
-(** Add CPU counter, and sleep when it reaches 72k, and render *)
-let rec continue options interpreter ctxt image =
-  (* Decode and set current hunk *)
-  let ctxt = ctxt#decode in
-  (* Lift current hunk and set current bil *)
-  let ctxt = ctxt#lift in
-  (* Decide what to do next with current bil*)
-  match ctxt#get_current_bil with
-  | [] -> continue options interpreter ctxt#advance image
-  | bil ->
-    let ctxt = Monad.State.exec (interpreter#eval bil) ctxt in
-    let ctxt = List.fold ~init:ctxt bil ~f:sync_if_needed in
-    let ctxt = ctxt#inc_k in
-    let ctxt = ctxt#inc_cpu_clock in
-    if options.di then
-      (
-        print_top ();
-        printf "\n";
-        ctxt#print_cpu;
-        print_bot ();
-        printf "\n"
-      );
-
-    (match options.k with
-     | Some k ->
-       (*0xbb34 *)
-       if ctxt#k = k then
-         (
-           if options.v then
-             (printf "Dumping vram\n";
-              ctxt#dump_vram);
-           if options.v then
-             (printf "Rendering\n";
-              render options ctxt);
-           failwith @@ sprintf "0x%x steps reached" k)
-     | None -> ());
-    continue options interpreter ctxt image
+     | _ -> return ())
+  | _ -> return ()
 
 let step_insn options interpreter ctxt image =
   (* Decode and set current hunk *)
@@ -484,12 +447,32 @@ let step_insn options interpreter ctxt image =
            if options.v then
              (printf "Dumping vram\n";
               ctxt#dump_vram);
-           if options.v then
+           (*if options.v then
              (printf "Rendering\n";
-              render options ctxt);
+              render options ctxt);*)
            failwith @@ sprintf "0x%x steps reached" k)
      | None -> ());
-    ctxt
+    ctxt (* TODO handle interrupts here *)
+
+let draw_bg ctxt tiles =
+  Background.from_tile_list tiles ctxt
+  |> Background.render
+
+let draw_gary ctxt =
+  let open Sprites in
+  let open Qsprite in
+  let gary = Sprites.gary ~offsetx:1 ~offsety:1 ctxt in
+  Qsprite.move gary 8 8;
+  Qsprite.render gary
+
+
+let draw ui matrix tiles =
+  let size = LTerm_ui.size ui in
+  let ctxt = LTerm_draw.context matrix size in
+  (*Format.printf "Size: %s\n" @@ string_of_size size;*)
+  LTerm_draw.clear ctxt;
+  draw_bg ctxt tiles;
+  draw_gary ctxt
 
 (** step instruction until 69905 clock cycles have been hit. that's
     one frame. Problem: clock cycles isn't a multiple of 69905, so
@@ -504,17 +487,75 @@ let step_frame options interpreter ctxt image =
       ctxt in
   repeat 0 ctxt
 
+let storage_of_context ctxt =
+  match ctxt#lookup (Z80_env.mem) with
+  | Some result ->
+    (match Bil.Result.value result with
+     | Bil.Mem storage ->
+       Some storage
+     | _ -> None)
+  | _ -> None
+
 let event_loop refresh_frame options interpreter ctxt image =
   let open Lwt in
-  let rec loop ctxt =
+  let open LTerm_key in
+
+  let ref_tiles = ref [] in
+
+  let rec frame_loop ui ctxt =
+    printf "looping!\n%!";
+    (*LTerm_ui.wait ui >>= function
+      | LTerm_event.Key { code = Escape } ->
+      return ()
+      | _ ->*)
+    printf "In loop\n%!";
+    (** Steps a frame *)
     let ctxt' = step_frame options interpreter ctxt image in
+
+    (** RENDER HERE *)
+    (** Set tiles from memory *)
+
+    printf "Dumping vram\n%!";
+    ctxt#dump_vram;
+    let storage = storage_of_context ctxt in
+    let tiles = Screen.get_tiles options storage in
+    (match tiles with
+     | Some tiles ->
+       Screen.print_ascii_screen tiles;
+       ref_tiles := tiles;
+     | None -> ());
+    printf "DRAWING, hopefully\n%!";
+    LTerm_ui.draw ui;
+
+    (** Sleep and loop *)
     Lwt_unix.sleep refresh_frame >>= fun _ ->
-    loop ctxt' in
-  loop ctxt
+    frame_loop ui ctxt' in
+
+  Lwt_io.printl "Starting event_loop" >>= fun () ->
+  Lazy.force LTerm.stdout >>= fun term ->
+  let storage = storage_of_context ctxt in
+  let tiles = Screen.get_tiles options storage in
+  (match tiles with
+   | Some tiles -> ref_tiles := tiles;
+   | None -> ());
+  LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
+  Lwt.finalize (fun () -> frame_loop ui ctxt) (fun () -> LTerm_ui.quit ui)
 
 let run options ctxt image =
   let interpreter = new z80_interpreter image options in
   let ctxt' = set_pc ctxt 0 in
-  (*continue options interpreter ctxt' image*)
   let hz_60 = (1./.10000.) in
-  Lwt_main.run (event_loop hz_60 options interpreter ctxt' image) |> ignore
+  try Lwt_main.run (event_loop 2. options interpreter ctxt' image)
+  with
+  | LTerm_draw.Out_of_bounds ->
+    failwith "Rendering is ON, out of bounds!\n"
+  | e -> let s = sprintf "%s" @@ Exn.to_string e in
+    failwith s
+
+
+(** Get to the point where you can render screen each frame. Then go
+    to emulator*)
+
+
+(** Without doing a draw, vram gets populated for the first time in
+    frame 5. just want to be able to render that. *)

@@ -121,7 +121,7 @@ let tiles_to_pixel_grid tiles =
 
 (** Tiles: 1024 element list with 8x8 entries becomes 256x256 grid *)
 let print_ascii_screen tiles =
-  List.iteri (tiles_to_pixel_grid tiles)
+  List.iteri tiles
     ~f:(fun i row -> print_flat_row row;
          printf "\n")
 
@@ -150,40 +150,35 @@ let tiles_of_idxs storage base idxs =
    1: $9C00-$9FFF -> Map 1
 *)
 
-let render options storage =
+let get_tiles options storage =
+  let open Option in
+  storage >>= fun storage ->
   let open Gbc_segment in
-  let lcdc = storage#load (Addr.of_int ~width:16 0xFF40) in
-  let map_display_select =
-    match lcdc with
-    | Some w -> printf "LCDC: %a\n" Word.pp w;
-      let mask = Word.of_int ~width:8 0x8 in
-      if Word.(w land mask = (zero 8)) then "vram-tile-map-0"
-      else "vram-tile-map-1"
-    | None -> failwith "Can't render here: no LCDC" in
-  let data_display_select =
-    match lcdc with
-    | Some w -> printf "LCDC: %a\n" Word.pp w;
-      let mask = Word.of_int ~width:8 0x10 in
-      if Word.(w land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
-      else "vram-tile-set-1" (* 0 - 255 *)
-    | None -> failwith "Can't render here: no LCDC"
-  in
+  storage#load (Addr.of_int ~width:16 0xFF40) >>= fun lcdc ->
+  let mask = Word.of_int ~width:8 0x8 in
+  (if Word.(lcdc land mask = (zero 8)) then "vram-tile-map-0"
+   else "vram-tile-map-1") |> fun map_display_select ->
+  let mask = Word.of_int ~width:8 0x10 in
+  (if Word.(lcdc land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
+   else "vram-tile-set-1") |> fun data_display_select -> (* 0 - 255 *)
   printf "map_display_select is: %s\n" map_display_select;
   printf "data_display_select is: %s\n" data_display_select;
   if verbose then
     Util.dump_segment storage (Gbc_segment.segment_of_name map_display_select);
   if verbose then
-    Util.dump_segment storage (Gbc_segment.segment_of_name data_display_select);
+    Util.dump_segment storage (Gbc_segment.segment_of_name
+                                 data_display_select);
   let map_segment = Gbc_segment.segment_of_name map_display_select in
   let data_display_segment = Gbc_segment.segment_of_name data_display_select in
-  let range = List.range map_segment.pos (map_segment.pos+map_segment.size) in
-  (* 1024 bytes *)
-  let idxs = List.fold range ~init:[] ~f:(fun acc addr_int ->
+  let range = List.range map_segment.pos (map_segment.pos
+                                          +map_segment.size) in
+  (** If a word does not exist in memory, bail and return None *)
+  List.fold range ~init:(Some []) ~f:(fun acc addr_int ->
       let addr = Addr.of_int ~width:16 addr_int in
-      match storage#load addr with
-      | Some word -> word::acc
-      | None ->
-        failwith @@ sprintf "Word 0x%04x does not exist in memory" addr_int) in
+      acc >>= fun l ->
+      storage#load addr >>= fun word -> Some (word::l))
+  (* 1024 bytes *)
+  >>= fun idxs ->
   (* tiles : 32 x 32
      tile 0    : 16 bytes
      tile 1    : 16 bytes
@@ -214,6 +209,80 @@ let render options storage =
      ]
   *)
   let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
-  (*print_ascii_screen tiles';*)
   let tiles' = tiles_to_pixel_grid tiles' in
-  Render.run_lwt tiles'
+  (*print_ascii_screen tiles';*)
+  return tiles'
+
+let get_tiles' options storage =
+  match storage with
+  | Some storage ->
+    let open Gbc_segment in
+    let lcdc = storage#load (Addr.of_int ~width:16 0xFF40) in
+    let map_display_select =
+      match lcdc with
+      | Some w -> printf "LCDC: %a\n" Word.pp w;
+        let mask = Word.of_int ~width:8 0x8 in
+        if Word.(w land mask = (zero 8)) then "vram-tile-map-0"
+        else "vram-tile-map-1"
+      | None -> printf "Can't render here: no LCDC"; "vram-tile-map-0" in (* WARN *)
+    let data_display_select =
+      match lcdc with
+      | Some w -> printf "LCDC: %a\n" Word.pp w;
+        let mask = Word.of_int ~width:8 0x10 in
+        if Word.(w land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
+        else "vram-tile-set-1" (* 0 - 255 *)
+      | None -> printf "Can't render here: no LCDC"; "vram-tile-set-0" (* WARN *)
+    in
+    printf "map_display_select is: %s\n" map_display_select;
+    printf "data_display_select is: %s\n" data_display_select;
+    if verbose then
+      Util.dump_segment storage (Gbc_segment.segment_of_name map_display_select);
+    if verbose then
+      Util.dump_segment storage (Gbc_segment.segment_of_name data_display_select);
+    let map_segment = Gbc_segment.segment_of_name map_display_select in
+    let data_display_segment = Gbc_segment.segment_of_name data_display_select in
+    let range = List.range map_segment.pos (map_segment.pos+map_segment.size) in
+    (* 1024 bytes *)
+    let idxs = List.fold range ~init:[] ~f:(fun acc addr_int ->
+        let addr = Addr.of_int ~width:16 addr_int in
+        match storage#load addr with
+        | Some word -> word::acc
+        | None ->
+          failwith @@ sprintf "Word 0x%04x does not exist in memory" addr_int) in
+    (* tiles : 32 x 32
+       tile 0    : 16 bytes
+       tile 1    : 16 bytes
+       ...
+       tile 1024 : 16 bytes *)
+    let base = Addr.of_int ~width:16 data_display_segment.pos in
+    let tiles = tiles_of_idxs storage base idxs in
+    (* tiles' :
+       [
+          tile 1:      [
+                       row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
+                       ...
+                       row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
+                       ]
+          tile 2:      [
+                       row 0 : ...
+                       ...
+                       row 8 : ...
+                       ]
+
+          tile ...
+
+          tile 1024:   [
+                       row 0 : ...
+                       ...
+                       row 8 : ...
+                       ]
+       ]
+    *)
+    let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
+    (*print_ascii_screen tiles';*)
+    let tiles' = tiles_to_pixel_grid tiles' in
+    tiles'
+  | None -> []
+
+let render options storage =
+  Render.run_lwt (get_tiles' options (Some storage))

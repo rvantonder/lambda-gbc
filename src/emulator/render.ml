@@ -9,6 +9,7 @@ open LTerm_key
 let rec loop ui coord =
   LTerm_ui.wait ui >>= function
   | LTerm_event.Key{ code = Up } ->
+    printf "Up!\n%!";
     coord := { !coord with row = !coord.row - 1 };
     LTerm_ui.draw ui;
     loop ui coord
@@ -61,18 +62,23 @@ let draw ui matrix tiles =
   draw_gary ctxt
 
 let main tiles =
+  printf "Before lazy force\n%!";
   Lazy.force LTerm.stdout
   >>= fun term ->
+  printf "In bind part\n%!";
   (* Coordinates of the message. *)
   let coord = ref { row = 0; col = 0 } in
   (*let gary_coord = ref { row = 0; col = 0 } in*)
+  printf "Create term\n%!";
   LTerm_ui.create term (fun ui matrix -> draw ui matrix tiles)
   >>= fun ui ->
   Lwt.finalize (fun () -> go ui coord) (fun () -> LTerm_ui.quit ui)
 
 let run_lwt tiles =
-  try Lwt_main.run (main tiles)
+  printf "Will try to render\n%!";
+  main tiles
+(*try Lwt_main.run (main tiles)
   with
   | LTerm_draw.Out_of_bounds ->
-    failwith "Rendering is ON: You need to zoom out on your terminal!\n"
-  | _ -> ();
+  failwith "Rendering is ON: You need to zoom out on your terminal!\n"
+  | _ -> ();*)
