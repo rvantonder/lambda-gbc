@@ -3,7 +3,7 @@ open Unsigned
 open Bap.Std
 open Format
 open Z80_disassembler.Hunk
-open Options.Options
+open Options
 open Lwt
 
 module Lifter = Z80_lifter
@@ -547,14 +547,14 @@ let event_loop refresh_frame options interpreter ctxt image =
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
   update_tiles_from_mem options ctxt; (* TODO probably safe to remove *)
-  LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
+  LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>=
+  fun ui -> check_small_screen ui;
   Lwt.finalize (fun () -> frame_loop ui ctxt) (fun () -> LTerm_ui.quit ui)
 
 let run options ctxt image =
   let interpreter = new z80_interpreter image options in
   let ctxt' = set_pc ctxt 0 in
-  let hz_60 = (1./.10000.) in
-  try Lwt_main.run (event_loop 2. options interpreter ctxt' image)
+  try Lwt_main.run (event_loop options.frame_speed options interpreter ctxt' image)
   with
   | LTerm_draw.Out_of_bounds ->
     failwith "Rendering is ON, out of bounds!\n"

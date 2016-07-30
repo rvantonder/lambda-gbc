@@ -19,8 +19,6 @@ open LTerm_geom
 open LTerm_text
 open LTerm_key
 
-open Options.Options
-
 let verbose = false
 
 let bit_pair_to_rgb bit1 bit2 =

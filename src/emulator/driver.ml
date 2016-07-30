@@ -3,16 +3,16 @@ open Core_kernel
 open Lazy
 open Format
 open Bap.Std
-open Options.Options (** WHY OH WHY *)
+open Options
 
 open Util
 
 module Cmdline = struct
-  open Options.Options (** WHY OH WHY *)
+  open Options
   open Cmdliner
 
   let process_args v_opt di_opt filename_opt no_render_opt hex_dump_opt
-      disas_opt k_opt =
+      disas_opt k_opt bootrom_opt frame_speed_opt =
     let (!) opt default = Option.value opt ~default in
     let filename_opt =
       !filename_opt "tests/boot/DMG_ROM_WITH_SCREEN.bin" in
@@ -22,7 +22,9 @@ module Cmdline = struct
      no_render = no_render_opt;
      hex_dump = hex_dump_opt;
      disas = disas_opt;
-     k = k_opt}
+     k = k_opt;
+     bootrom = bootrom_opt;
+     frame_speed = frame_speed_opt}
 
   let v_opt : bool Term.t =
     let doc = "verbose info" in
@@ -54,17 +56,28 @@ module Cmdline = struct
     let doc = "execute k steps" in
     Arg.(value & opt (some int) None & info ["k"] ~doc)
 
+  let bootrom_opt : bool Term.t =
+    let doc = "use bootrom" in
+    Arg.(value & flag & info ["bootrom"] ~doc)
+
+  let frame_speed_opt : float Term.t =
+    let doc = "Speed to update frames, in seconds" in
+    Arg.(value & opt float (1./.60.) & info ["s"; "speed"] ~doc)
+
   let info : Term.info =
     Term.info ~doc:"A pure functional GBC emulator" "Lambda-GBC"
 
   let parse argv =
     Term.eval ~argv (Term.(pure process_args
                            $v_opt
-                           $di_opt $filename_opt
+                           $di_opt
+                           $filename_opt
                            $no_render_opt
                            $hex_dump_opt
                            $disas_opt
-                           $k_opt), info)
+                           $k_opt
+                           $bootrom_opt
+                           $frame_speed_opt), info)
     |> function
     | `Ok opts -> opts
     | _ -> exit 1
@@ -101,7 +114,12 @@ let () =
   disassemble_linear image options;
   if options.v then
     printf "Initializing interpreter...\n";
-  let initial_ctxt = Z80_interpreter.init image options in
+  let initial_ctxt =
+    if options.bootrom then
+      Z80_interpreter.init image options
+    else
+      Z80_interpreter.init_default image options
+  in
   if options.v then
     initial_ctxt#print_cpu;
   Z80_interpreter.run options initial_ctxt image |> ignore;

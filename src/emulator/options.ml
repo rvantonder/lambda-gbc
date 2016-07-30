@@ -1,20 +1,20 @@
 open Format
 open Fieldslib
 
-module Options  = struct
-  type t = {    v : bool;
-                di : bool;
-                no_render : bool;
-                filename : string;
-                hex_dump : bool;
-                disas : int option;
-                k : int option;
-           }
-    [@@deriving fields]
-end
+type t = {    v : bool;
+              di : bool;
+              no_render : bool;
+              filename : string;
+              hex_dump : bool;
+              disas : int option;
+              k : int option;
+              bootrom : bool;
+              frame_speed : float
+         }
+  [@@deriving fields]
 
 let print opt =
-  Options.Fields.iter
+  Fields.iter
     ~v:(fun di -> printf "%s : %b" (Field.name di) (Field.get di opt))
     ~di:(fun di -> printf "%s : %b" (Field.name di) (Field.get di opt))
     ~filename:(fun f -> printf "%s : %s" (Field.name f) (Field.get f opt))
@@ -30,3 +30,6 @@ let print opt =
         | Some i ->
           printf "%s : %d" (Field.name k) i
         | None -> printf "%s : false" (Field.name k))
+    ~bootrom:(fun b -> printf "%s: %b" (Field.name b) (Field.get b opt))
+    ~frame_speed:(fun speed ->
+        printf "%s : %f" (Field.name speed) (Field.get speed opt))

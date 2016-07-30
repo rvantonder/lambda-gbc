@@ -4,7 +4,7 @@ open Core_kernel.Std
 open Bap.Std
 open Format
 open Gbc_segment
-open Options.Options
+open Options
 
 let time tag f options =
   let t = Unix.gettimeofday () in
