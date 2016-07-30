@@ -1,8 +1,8 @@
 open Bap.Std
 open Gbc_segment
-open Options.Options
+open Options
 
-val time : string -> 'a lazy_t -> Options.Options.t -> 'a
+val time : string -> 'a lazy_t -> Options.t -> 'a
 
 val dump_storage : Bil.storage -> int -> int -> unit
 

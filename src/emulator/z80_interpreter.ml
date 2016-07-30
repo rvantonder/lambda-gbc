@@ -547,8 +547,8 @@ let event_loop refresh_frame options interpreter ctxt image =
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
   update_tiles_from_mem options ctxt; (* TODO probably safe to remove *)
-  LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>=
-  fun ui -> check_small_screen ui;
+  LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
+  (*check_small_screen ui;*) (* TODO turn on later *)
   Lwt.finalize (fun () -> frame_loop ui ctxt) (fun () -> LTerm_ui.quit ui)
 
 let run options ctxt image =
