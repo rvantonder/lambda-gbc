@@ -1,0 +1,11 @@
+PKG core_kernel lwt lambda-term ctypes ctypes-foreign bap cmdliner
+
+EXT nonrec
+
+FLG -short-paths
+
+S src/emulator
+B _build/src/emulator
+
+s src/render
+B _build/src/render
