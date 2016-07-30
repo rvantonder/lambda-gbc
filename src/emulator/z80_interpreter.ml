@@ -373,69 +373,14 @@ let print_ctxt ctxt options =
 (* TODO, I don't like how we create a new interpreter here and don't
    return it... shouldn't be needed... just return ctxt*)
 let init image options =
-  let (++) = Set.union in
-  let i8 x = Bil.int (Word.of_int ~width:8 x) in
-  let i16 x = Bil.int (Word.of_int ~width:16 x) in
-  let false_ = Bil.int Word.b0 in
-  let stmts =
-    Set.fold ~init:[] (CPU.gpr ++ CPU.flags) ~f:(fun stmts v ->
-        if Var.typ v = reg8_t then
-          Bil.(v := i8 0)::stmts
-        else if Var.typ v = reg16_t then
-          Bil.(v := i16 0)::stmts
-        else if Var.typ v = bool_t then
-          Bil.(v := false_)::stmts
-        else
-          failwith "reg is not of type reg8_t, reg16_t or flag. \
-                    Cannot continue.") in
+  let stmts = Boot.clean_state in
   let ctxt = new context image options in
   let interpreter = new z80_interpreter image options in
   let start = interpreter#eval stmts in
   Monad.State.exec start ctxt
 
 let init_default image options =
-  let (++) = Set.union in
-  let i8 x = Bil.int (Word.of_int ~width:8 x) in
-  let i16 x = Bil.int (Word.of_int ~width:16 x) in
-  let false_ = Bil.int Word.b0 in
-  let true_ = Bil.int Word.b1 in
-  let stmts =
-    Set.fold ~init:[] (CPU.gpr ++ CPU.flags) ~f:(fun stmts v ->
-        if Var.typ v = reg8_t then
-          match Var.name v with
-          (* XXX hate the string comparison. If i used types I could
-             match exhuastively. but bap won't let me use something other than
-             'var' type *)
-          | "A" -> Bil.(v := i8 0x01)::stmts
-          | "F" -> Bil.(v := i8 0xB0)::stmts
-          | "B" -> Bil.(v := i8 0x00)::stmts
-          | "C" -> Bil.(v := i8 0x13)::stmts
-          | "D" -> Bil.(v := i8 0x00)::stmts
-          | "E" -> Bil.(v := i8 0xD8)::stmts
-          | "H" -> Bil.(v := i8 0x01)::stmts
-          | "L" -> Bil.(v := i8 0x4D)::stmts
-          | _ -> Bil.(v := i8 0)::stmts
-        else if Var.typ v = reg16_t then
-          match Var.name v with
-          | "AF" -> Bil.(v := i16 0x01B0)::stmts
-          | "BC" -> Bil.(v := i16 0x0013)::stmts
-          | "DE" -> Bil.(v := i16 0x00D8)::stmts
-          | "HL" -> Bil.(v := i16 0x014D)::stmts
-          | "SP" -> Bil.(v := i16 0xFFFE)::stmts
-          | "PC" -> Bil.(v := i16 0x0100)::stmts
-          | _ ->  Bil.(v := i16 0)::stmts
-        else if Var.typ v = bool_t then
-          match Var.name v with
-          | "FZ" -> Bil.(v := true_)::stmts (* XXX change to Bil.fz := true_)...*)
-          | "FN" -> Bil.(v := false_)::stmts
-          | "FH" -> Bil.(v := true_)::stmts
-          | "FC" -> Bil.(v := true_)::stmts
-          | _ -> Bil.(v := false_)::stmts
-        else
-          failwith "reg is not of type reg8_t, reg16_t or flag. \
-                    Cannot continue.") in
-  let stmts = Bil.(CPU.mem := store ~mem:(var CPU.mem) ~addr:(i16 0xFF05)
-                       (i8 0x00) LittleEndian `r8)::stmts in
+  let stmts = Boot.ready_state in
   let ctxt = new context image options in
   let interpreter = new z80_interpreter image options in
   let start = interpreter#eval stmts in
