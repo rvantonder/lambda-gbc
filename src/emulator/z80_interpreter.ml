@@ -465,21 +465,27 @@ let draw_gary ctxt =
   Qsprite.move gary 8 8;
   Qsprite.render gary
 
-
+(** TODO: why if i raise exception here does it get ignored? *)
 let draw ui matrix tiles =
+  let open LTerm_geom in
   let size = LTerm_ui.size ui in
   let ctxt = LTerm_draw.context matrix size in
-  (*Format.printf "Size: %s\n" @@ string_of_size size;*)
+  (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
+    Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
+    (if size.rows < 289 || size.cols < 1430 then
+     raise (Failure "I'm not going to continue drawing. Screen too small"));*)
   LTerm_draw.clear ctxt;
   draw_bg ctxt tiles;
   draw_gary ctxt
+
+let max_steps = 69905
 
 (** step instruction until 69905 clock cycles have been hit. that's
     one frame. Problem: clock cycles isn't a multiple of 69905, so
     this is a slight approximation. *)
 let step_frame options interpreter ctxt image =
   let rec repeat count ctxt =
-    if count < 69905 then
+    if count < max_steps then
       let ctxt' = step_insn options interpreter ctxt image in
       let cycles = ctxt#current_hunk.cycles in
       repeat (count+cycles) ctxt'
@@ -496,11 +502,26 @@ let storage_of_context ctxt =
      | _ -> None)
   | _ -> None
 
+let ref_tiles = ref [] (* XXX get rid of it later *)
+
+let update_tiles_from_mem options ctxt =
+  let storage = storage_of_context ctxt in
+  let tiles = Screen.get_tiles options storage in
+  (match tiles with
+   | Some tiles ->
+     Screen.print_ascii_screen tiles;
+     ref_tiles := tiles;
+   | None -> ())
+
+let check_small_screen ui =
+  let open LTerm_geom in
+  let size = LTerm_ui.size ui in
+  (if size.rows < 289 || size.cols < 1430 then (* XXX thumb suck *)
+     raise (Failure "I'm not going to continue drawing. Screen too small"))
+
 let event_loop refresh_frame options interpreter ctxt image =
   let open Lwt in
   let open LTerm_key in
-
-  let ref_tiles = ref [] in
 
   let rec frame_loop ui ctxt =
     printf "looping!\n%!";
@@ -514,17 +535,9 @@ let event_loop refresh_frame options interpreter ctxt image =
 
     (** RENDER HERE *)
     (** Set tiles from memory *)
-
-    printf "Dumping vram\n%!";
-    ctxt#dump_vram;
-    let storage = storage_of_context ctxt in
-    let tiles = Screen.get_tiles options storage in
-    (match tiles with
-     | Some tiles ->
-       Screen.print_ascii_screen tiles;
-       ref_tiles := tiles;
-     | None -> ());
-    printf "DRAWING, hopefully\n%!";
+    (*printf "Dumping vram\n%!";
+      ctxt#dump_vram;*)
+    update_tiles_from_mem options ctxt;
     LTerm_ui.draw ui;
 
     (** Sleep and loop *)
@@ -533,11 +546,7 @@ let event_loop refresh_frame options interpreter ctxt image =
 
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
-  let storage = storage_of_context ctxt in
-  let tiles = Screen.get_tiles options storage in
-  (match tiles with
-   | Some tiles -> ref_tiles := tiles;
-   | None -> ());
+  update_tiles_from_mem options ctxt; (* TODO probably safe to remove *)
   LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
   Lwt.finalize (fun () -> frame_loop ui ctxt) (fun () -> LTerm_ui.quit ui)
 
@@ -551,11 +560,3 @@ let run options ctxt image =
     failwith "Rendering is ON, out of bounds!\n"
   | e -> let s = sprintf "%s" @@ Exn.to_string e in
     failwith s
-
-
-(** Get to the point where you can render screen each frame. Then go
-    to emulator*)
-
-
-(** Without doing a draw, vram gets populated for the first time in
-    frame 5. just want to be able to render that. *)
