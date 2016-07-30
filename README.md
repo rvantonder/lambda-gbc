@@ -1,4 +1,3 @@
-
 ## Boot
 
 `DMG_ROM.bin` is the original boot rom that would get loaded at `0x0000`, run
@@ -54,3 +53,31 @@ Test initial state with something like:
 Load the tetris rom and set BP at 0x100 and 0x101.
 
 
+## Options
+
+Run with the boot file (initial state is 0 for registers and memory):
+
+`./driver.native --bootrom`
+
+Set the speed per frame:
+
+`./driver.native --speed 1.0`
+
+Dump the state after each instruction
+
+`./driver.native --di`
+
+Run k steps
+
+`./driver.native -k 0xbb34`
+
+Hex dump and disassemble at offset
+
+`./driver.native --hd --disas 0x100`
+
+
+# TODO
+
+Get it to work fully on bootrom, with updating Nintendo logo.
+
+Then switch to tetris.
