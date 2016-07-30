@@ -101,7 +101,7 @@ let () =
   disassemble_linear image options;
   if options.v then
     printf "Initializing interpreter...\n";
-  let initial_ctxt = Z80_interpreter.init_default image options in
+  let initial_ctxt = Z80_interpreter.init image options in
   if options.v then
     initial_ctxt#print_cpu;
   Z80_interpreter.run options initial_ctxt image |> ignore;

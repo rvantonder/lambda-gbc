@@ -4,6 +4,7 @@ open Bap.Std
 open Format
 open Z80_disassembler.Hunk
 open Options.Options
+open Lwt
 
 module Lifter = Z80_lifter
 
@@ -135,6 +136,8 @@ class context image options = object(self : 's)
   method cpu_clock = cpu_clock
 
   method k = k
+
+  method current_hunk = current_hunk
 
   (** Set of addrs for which we have memory contents in the
       interpreter storage *)
@@ -451,7 +454,67 @@ let rec continue options interpreter ctxt image =
      | None -> ());
     continue options interpreter ctxt image
 
+let step_insn options interpreter ctxt image =
+  (* Decode and set current hunk *)
+  let ctxt = ctxt#decode in
+  (* Lift current hunk and set current bil *)
+  let ctxt = ctxt#lift in
+  (* Decide what to do next with current bil*)
+  match ctxt#get_current_bil with
+  | [] -> ctxt#advance
+  | bil ->
+    let ctxt = Monad.State.exec (interpreter#eval bil) ctxt in
+    let ctxt = List.fold ~init:ctxt bil ~f:sync_if_needed in
+    let ctxt = ctxt#inc_k in
+    let ctxt = ctxt#inc_cpu_clock in
+    if options.di then
+      (
+        print_top ();
+        printf "\n";
+        ctxt#print_cpu;
+        print_bot ();
+        printf "\n"
+      );
+
+    (match options.k with
+     | Some k ->
+       (*0xbb34 *)
+       if ctxt#k = k then
+         (
+           if options.v then
+             (printf "Dumping vram\n";
+              ctxt#dump_vram);
+           if options.v then
+             (printf "Rendering\n";
+              render options ctxt);
+           failwith @@ sprintf "0x%x steps reached" k)
+     | None -> ());
+    ctxt
+
+(** step instruction until 69905 clock cycles have been hit. that's
+    one frame. Problem: clock cycles isn't a multiple of 69905, so
+    this is a slight approximation. *)
+let step_frame options interpreter ctxt image =
+  let rec repeat count ctxt =
+    if count < 69905 then
+      let ctxt' = step_insn options interpreter ctxt image in
+      let cycles = ctxt#current_hunk.cycles in
+      repeat (count+cycles) ctxt'
+    else
+      ctxt in
+  repeat 0 ctxt
+
+let event_loop refresh_frame options interpreter ctxt image =
+  let open Lwt in
+  let rec loop ctxt =
+    let ctxt' = step_frame options interpreter ctxt image in
+    Lwt_unix.sleep refresh_frame >>= fun _ ->
+    loop ctxt' in
+  loop ctxt
+
 let run options ctxt image =
   let interpreter = new z80_interpreter image options in
   let ctxt' = set_pc ctxt 0 in
-  continue options interpreter ctxt' image
+  (*continue options interpreter ctxt' image*)
+  let hz_60 = (1./.10000.) in
+  Lwt_main.run (event_loop hz_60 options interpreter ctxt' image) |> ignore
