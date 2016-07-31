@@ -534,23 +534,26 @@ let event_loop refresh_frame options interpreter ctxt image =
   let open LTerm_key in
 
   let stream, push = Lwt_stream.create () in
-  let sleepy,wakey = Lwt.wait () in
 
-  let rec input_loop term ui ctxt =
+  let rec input_loop term ui ctxt (wakey : unit u option) =
     LTerm.read_event term >>= function
     | LTerm_event.Key { code = Escape } ->
       return ()
     | LTerm_event.Key { code = Enter } ->
       Lwt_io.read_line Lwt_io.stdin >>= fun s ->
-      Lwt_io.printf "Pushing command: %s\n" s >>= fun () ->
-      push (Some s);
-      (match s with
-       | "resume" ->
+      Lwt_io.printf "Command: %s\n" s >>= fun () ->
+      (match s,wakey with
+       | "pause",_ ->
+         let sleepy,wakey = Lwt.wait () in
+         printf "PUSHING SLEEPY\n%!";
+         push (Some sleepy);
+         input_loop term ui ctxt (Some wakey)
+       | "resume",Some wakey ->
          printf "WAKING\n%!";
-         Lwt.wakeup wakey ()
-       | _ -> ());
-      input_loop term ui ctxt
-    | _ -> input_loop term ui ctxt in
+         Lwt.wakeup wakey ();
+         input_loop term ui ctxt None
+       | _ ->  input_loop term ui ctxt wakey)
+    | _ -> input_loop term ui ctxt wakey in
 
   let rec frame_loop term ui ctxt =
     printf "In loop\n%!";
@@ -572,7 +575,7 @@ let event_loop refresh_frame options interpreter ctxt image =
     let elems = Lwt_stream.get_available stream in
     Lwt_io.printf "Size events: %d\n%!" (List.length elems) >>= fun () ->
     match elems with
-    | ["pause"] ->
+    | [sleepy] ->
       Lwt_io.printf "PAUSING\n%!" >>= fun () ->
       sleepy >>= fun () ->
       frame_loop term ui ctxt'
@@ -586,7 +589,7 @@ let event_loop refresh_frame options interpreter ctxt image =
   (*check_small_screen ui;*) (* TODO turn on later *)
   Lwt.finalize (fun () -> Lwt.join
                    [frame_loop term ui ctxt;
-                    input_loop term ui ctxt;]
+                    input_loop term ui ctxt None;]
                ) (fun () -> LTerm_ui.quit ui)
 
 let run options ctxt image =
