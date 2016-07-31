@@ -533,12 +533,26 @@ let event_loop refresh_frame options interpreter ctxt image =
   let open Lwt in
   let open LTerm_key in
 
-  let rec frame_loop ui ctxt =
-    printf "looping!\n%!";
-    (*    LTerm_ui.wait ui >>= function
-          | LTerm_event.Key { code = Escape } ->
-          return ()
-          | _ ->*)
+  let stream, push = Lwt_stream.create () in
+  let sleepy,wakey = Lwt.wait () in
+
+  let rec input_loop term ui ctxt =
+    LTerm.read_event term >>= function
+    | LTerm_event.Key { code = Escape } ->
+      return ()
+    | LTerm_event.Key { code = Enter } ->
+      Lwt_io.read_line Lwt_io.stdin >>= fun s ->
+      Lwt_io.printf "Pushing command: %s\n" s >>= fun () ->
+      push (Some s);
+      (match s with
+       | "resume" ->
+         printf "WAKING\n%!";
+         Lwt.wakeup wakey ()
+       | _ -> ());
+      input_loop term ui ctxt
+    | _ -> input_loop term ui ctxt in
+
+  let rec frame_loop term ui ctxt =
     printf "In loop\n%!";
     (** Steps a frame *)
     let ctxt' = step_frame options interpreter ctxt image in
@@ -550,16 +564,30 @@ let event_loop refresh_frame options interpreter ctxt image =
     update_tiles_from_mem options ctxt;
     LTerm_ui.draw ui;
 
-    (** Sleep and loop *)
+    (** Sleep, check input, and loop *)
     Lwt_unix.sleep refresh_frame >>= fun _ ->
-    frame_loop ui ctxt' in
+    (*Lwt_io.read_line Lwt_io.stdin >>= fun str ->
+      Lwt_io.printlf "You typed %S%!" str >>= fun () ->*)
+    Lwt_io.printf "Checking stream\n%!" >>= fun () ->
+    let elems = Lwt_stream.get_available stream in
+    Lwt_io.printf "Size events: %d\n%!" (List.length elems) >>= fun () ->
+    match elems with
+    | ["pause"] ->
+      Lwt_io.printf "PAUSING\n%!" >>= fun () ->
+      sleepy >>= fun () ->
+      frame_loop term ui ctxt'
+    | _ ->
+      frame_loop term ui ctxt' in
 
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
   update_tiles_from_mem options ctxt; (* TODO probably safe to remove *)
   LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
   (*check_small_screen ui;*) (* TODO turn on later *)
-  Lwt.finalize (fun () -> frame_loop ui ctxt) (fun () -> LTerm_ui.quit ui)
+  Lwt.finalize (fun () -> Lwt.join
+                   [frame_loop term ui ctxt;
+                    input_loop term ui ctxt;]
+               ) (fun () -> LTerm_ui.quit ui)
 
 let run options ctxt image =
   let interpreter = new z80_interpreter image options in
