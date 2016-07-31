@@ -80,4 +80,9 @@ Hex dump and disassemble at offset
 
 Get it to work fully on bootrom, with updating Nintendo logo.
 
+Debug mode:
+
+`./driver.native --bootrom --speed 1.0 --di`
+
 Then switch to tetris.
+

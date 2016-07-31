@@ -15,3 +15,4 @@
 
 # Unimplemented improve
 #./driver.native --disas=0x204 -f tests/cpu_instrs/individual/01-special.gb
+export OCAMLFIND_IGNORE_DUPS_IN=/home/vagrant/.opam/4.02.3/lib/ocaml/compiler-libs

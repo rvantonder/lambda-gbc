@@ -257,6 +257,16 @@ class context image options = object(self : 's)
 
 end
 
+let print_top () =
+  let s = List.init 22 ~f:(fun x -> "─")
+          |> String.concat in
+  printf "┌%s┐" s
+
+let print_bot () =
+  let s = List.init 22 ~f:(fun x -> "─")
+          |> String.concat in
+  printf "└%s┘" s
+
 open Monad.State
 
 (** Advancing is explicit, except for jmp *)
@@ -356,6 +366,14 @@ class ['a] z80_interpreter image options = object(self)
   (** Unhandled instructions will simply advance pc. Need to store
       current statement execution in ctxt. ctxt should do lifting. *)
   method! eval_special s =
+    get () >>= fun ctxt ->
+    let open Z80_disassembler in
+    print_top ();
+    printf "\n";
+    ctxt#print_cpu;
+    print_bot ();
+    printf "\n";
+    printf "%a\n" Hunk.pp ctxt#current_hunk;
     failwith "Not implemented" |> ignore;
     get () >>= fun ctxt ->
     put ctxt#advance >>= fun () ->
@@ -395,15 +413,7 @@ let sync_if_needed ctxt bil_stmt =
   | Bil.Move (v,_) -> Stmt.eval (sync v) ctxt
   | _ -> ctxt
 
-let print_top () =
-  let s = List.init 22 ~f:(fun x -> "─")
-          |> String.concat in
-  printf "┌%s┐" s
 
-let print_bot () =
-  let s = List.init 22 ~f:(fun x -> "─")
-          |> String.concat in
-  printf "└%s┘" s
 
 let render options ctxt =
   let open Lwt in
@@ -509,7 +519,7 @@ let update_tiles_from_mem options ctxt =
   let tiles = Screen.get_tiles options storage in
   (match tiles with
    | Some tiles ->
-     Screen.print_ascii_screen tiles;
+     (*Screen.print_ascii_screen tiles;*)
      ref_tiles := tiles;
    | None -> ())
 
@@ -525,10 +535,10 @@ let event_loop refresh_frame options interpreter ctxt image =
 
   let rec frame_loop ui ctxt =
     printf "looping!\n%!";
-    (*LTerm_ui.wait ui >>= function
-      | LTerm_event.Key { code = Escape } ->
-      return ()
-      | _ ->*)
+    (*    LTerm_ui.wait ui >>= function
+          | LTerm_event.Key { code = Escape } ->
+          return ()
+          | _ ->*)
     printf "In loop\n%!";
     (** Steps a frame *)
     let ctxt' = step_frame options interpreter ctxt image in
