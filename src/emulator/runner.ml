@@ -82,7 +82,16 @@ module Z80_interpreter_loop = struct
        ref_tiles := tiles;
      | None -> ())
 
-  let run refresh_rate_frame options ctxt image term stream =
+  let handle_request ctxt = function
+    | Debugger.Request.Sleep sleepy ->
+      Lwt_io.printf "[+] Event: Pause/Sleep\n%!" >>= fun () ->
+      sleepy
+    | Debugger.Request.Bp loc ->
+      Lwt_io.printf "[+] Event: BP to set at %d\n%!" loc
+  (*    | _ -> return ()*)
+
+  let run refresh_rate_frame options ctxt image term recv_stream =
+    (** Create screen matrix *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
     (** Create the interpreter *)
@@ -90,26 +99,23 @@ module Z80_interpreter_loop = struct
     let ctxt = Z80_interpreter.set_pc ctxt 0 in
 
     let rec loop ui ctxt =
-      (** Steps a frame *)
-      let ctxt' = Z80_interpreter.step_frame options interpreter ctxt image in
-
-      (** RENDER HERE *)
-      (** Set tiles from memory *)
+      Lwt_io.printf "Looping!\n%!" >>= fun () ->
+      (** Render: Set tiles from memory *)
       update_tiles_from_mem options ctxt;
       LTerm_ui.draw ui;
 
-      (** Sleep, check input, and loop *)
+      (** Handle input requests *)
+      (match Lwt_stream.get_available recv_stream with
+       | [rq] -> handle_request ctxt rq
+       | _ -> return ()) >>= fun () ->
+
+      (** Sleep *)
       Lwt_unix.sleep refresh_rate_frame >>= fun _ ->
-      let elems = Lwt_stream.get_available stream in
-      match elems with
-      | [Debugger.Request.Sleep sleepy] ->
-        Lwt_io.printf "[+] Event: Pause/Sleep\n%!" >>= fun () ->
-        sleepy >>= fun () ->
-        loop ui ctxt'
-      | [Debugger.Request.Bp loc] ->
-        Lwt_io.printf "[+] Event: BP to set at %d\n%!" loc >>= fun () ->
-        loop ui ctxt'
-      | _ -> loop ui ctxt' in
+
+      (** Steps a frame, next ctxt *)
+      let ctxt' = Z80_interpreter.step_frame options interpreter ctxt image in
+      loop ui ctxt' in
+
     loop ui ctxt
 end
 
