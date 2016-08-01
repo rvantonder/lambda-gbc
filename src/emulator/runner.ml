@@ -82,17 +82,24 @@ module Z80_interpreter_loop = struct
        ref_tiles := tiles;
      | None -> ())
 
+  (** A request may be received while input is blocking (paused) or
+      non-blocking. Everything stays the same, except:
+      1) When blocking, an unrecognized request should not change state
+      2) When non-blocking, an unrecognized request should simply step the
+      interpreter. Otherwise, each unrecognized command issued will
+      "skip" the frame for that cycle. *)
   let handle_request ctxt step_frame =
     let open Debugger.Request in
     function
-    | Step ->
+    | Step,_ ->
       Lwt_io.printf "[+] Event: (step)\n%!" >|= fun () ->
       step_frame ctxt
-    | Print Regs ->
+    | Print Regs,_ ->
       Lwt_io.printf "[+] Event: (print regs)\n%!" >|= fun () ->
       ctxt#print_cpu;
       ctxt
-    | _ -> return ctxt
+    | _,`Blocking -> return ctxt
+    | _,`Non_blocking -> return (step_frame ctxt)
 
   (** Blocking input loop when paused *)
   let input_loop_on_pause recv_stream ctxt step_frame =
@@ -104,7 +111,7 @@ module Z80_interpreter_loop = struct
         Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
         step_frame ctxt
       | _ ->
-        handle_request ctxt step_frame rq >>= fun ctxt ->
+        handle_request ctxt step_frame (rq,`Blocking) >>= fun ctxt ->
         Lwt_stream.next recv_stream >>= fun rq ->
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
@@ -131,8 +138,9 @@ module Z80_interpreter_loop = struct
        | [Debugger.Request.Pause _] ->
          (** Enter blocking input mode for stream *)
          input_loop_on_pause recv_stream ctxt step_frame
+       | [rq] -> handle_request ctxt step_frame (rq,`Non_blocking)
        | _ ->
-         (** Steps a frame by default, next ctxt *)
+         (** If empty, steps a frame by default, next ctxt *)
          step_frame ctxt |> return)
       >>= fun ctxt' ->
 
