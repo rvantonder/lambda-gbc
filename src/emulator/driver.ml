@@ -122,5 +122,5 @@ let () =
   in
   if options.v then
     initial_ctxt#print_cpu;
-  Z80_interpreter.run options initial_ctxt image |> ignore;
+  Runner.run options initial_ctxt image |> ignore;
   ()
