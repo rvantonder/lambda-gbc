@@ -4,78 +4,31 @@ open Sexplib
 
 (** A Request issued to the z80 interpreter, which is handles *)
 module Request = struct
-  type printable = Regs
-
-  type t = Pause of unit Lwt.t
-         | Resume
-         | Bp of int
-         | Step
-         | Print of printable
-end
-
-(** A command received on input from user on repl *)
-module Command = struct
-  type printable = Regs [@@deriving sexp]
+  type printable = Regs [@@ deriving sexp]
 
   type t = Pause
          | Resume
          | Bp of int
          | Step
-         | Print of printable
-    [@@deriving sexp]
+         | Print of printable [@@deriving sexp]
 end
 
 (** A module for a daemon that interprets commands *)
 module Command_interpreter = struct
   type state = {
-    (* The command number *)
     n : int;
-    (* The Lwt push stream *)
     push_channel : (Request.t option -> unit)}
-  (* Some if we can resume after pause by waking this thread*)
-  (*resume_after_pause : unit Lwt.u option}*)
 
   let create push_channel =
     {n = 1;
      push_channel}
-  (*resume_after_pause = None*)
 
-  (** How pause/resume works:
-      When we see pause, create a sleep/wake thread pair. Send the sleep
-      thread to the frame_loop. When we see resume, wake it up. Send a
-      reference of the wake thread along with the input loop.
-  *)
-  let try_do (cmd : Command.t) state =
-    let open Command in
-    match cmd,state with
-    | Pause,_ ->
-      printf "Valid pause command!\n%!";
-      let sleepy,wakey = Lwt.wait () in
-      printf "Pushing sleepy!\n%!";
-      state.push_channel (Some (Request.Pause sleepy));
-      state
-    | Resume,_ ->
-      printf "Valid resume command!\n%!";
-      (*Lwt.wakeup wakey ();
-        {state with resume_after_pause = None}*)
-      state.push_channel (Some (Request.Resume));
-      state
-    | Bp pos,_ -> printf "Breakpoint set @ %d\n%!" pos;
-      state.push_channel (Some (Request.Bp pos));
-      state
-    | Step,_ ->
-      state.push_channel (Some (Request.Step));
-      state
-    | Print Regs,_ ->
-      state.push_channel (Some (Request.Print Request.Regs));
-      state
-
-  let process state (cmd : string) =
-    let open Command in
+  let process state (rq : string) =
+    let open Request in
     let state' =
       try
-        String.capitalize cmd |> Sexp.of_string |> Command.t_of_sexp
-        |> fun cmd -> try_do cmd state
+        String.capitalize rq |> Sexp.of_string |> t_of_sexp
+        |> fun rq' -> state.push_channel (Some rq'); state
       with
       | Sexplib.Conv.Of_sexp_error (exn,sexp) -> state (*cmd could not be parsed *)
       | exn ->
@@ -83,7 +36,7 @@ module Command_interpreter = struct
         printf "Uncaught exception in Debugger_command.ml: %s\n%!" s;
         state
     in
-    let out = "evaluated " ^ cmd in
+    let out = "evaluated " ^ rq in
     let new_state = { state' with n = state'.n + 1 } in
     (new_state, out)
 

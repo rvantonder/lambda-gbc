@@ -102,7 +102,7 @@ module Z80_interpreter_loop = struct
     | _,`Non_blocking -> return (step_frame ctxt)
 
   (** Blocking input loop when paused *)
-  let input_loop_on_pause recv_stream ctxt step_frame =
+  let blocking_input_loop_on_pause recv_stream ctxt step_frame =
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
     let rec loop_blocking_while_paused rq ctxt =
@@ -125,6 +125,7 @@ module Z80_interpreter_loop = struct
     let ctxt = Z80_interpreter.set_pc ctxt 0 in
 
     let rec loop ui ctxt =
+      let open Debugger.Request in
       (*Lwt_io.printf "Looping!\n%!" >>= fun () ->*)
       (** Render: Set tiles from memory *)
       update_tiles_from_mem options ctxt;
@@ -135,9 +136,9 @@ module Z80_interpreter_loop = struct
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
-       | [Debugger.Request.Pause _] ->
+       | [Pause] ->
          (** Enter blocking input mode for stream *)
-         input_loop_on_pause recv_stream ctxt step_frame
+         blocking_input_loop_on_pause recv_stream ctxt step_frame
        | [rq] -> handle_request ctxt step_frame (rq,`Non_blocking)
        | _ ->
          (** If empty, steps a frame by default, next ctxt *)
