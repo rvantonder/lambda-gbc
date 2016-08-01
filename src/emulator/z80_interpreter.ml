@@ -530,20 +530,13 @@ let check_small_screen ui =
      raise (Failure
               "I'm not going to continue drawing. Screen too small"))
 
-(** How pause/resume works:
-    When we see pause, create a sleep/wake thread pair. Send the sleep
-    thread to the frame_loop. When we see resume, wake it up. Send a
-    reference of the wake thread along with the input loop.
-*)
 let event_loop refresh_frame options interpreter ctxt image =
   let open Lwt in
   let open LTerm_key in
 
   let stream, push = Lwt_stream.create () in
 
-  (** Stolen repl loop from lambda-term/examples/repl.ml. No idea how
-      it does the magic*)
-  let rec input_loop term history state (*wakey*) =
+  let rec input_loop term history state =
     let open Debugger.Repl in
     Lwt.catch (fun () ->
         let rl = new read_line ~term
@@ -554,22 +547,9 @@ let event_loop refresh_frame options interpreter ctxt image =
     | Some command ->
       let state,out = Debugger.Command_interpreter.process state command in
       LTerm.fprintls term (make_output state out) >>= fun () ->
-      (*let maybe_wakey =
-        match command,wakey with
-        | "pause",_ ->
-          let sleepy,wakey = Lwt.wait () in
-          printf "Pushing sleepy!\n%!";
-          push (Some sleepy);
-          Some wakey
-        | "resume",Some wakey ->
-          printf "Waking\n%!";
-          Lwt.wakeup wakey ();
-          None
-        | _ -> None in*)
       LTerm_history.add history command;
-      input_loop term history state (*maybe_wakey*)
-    | None ->
-      input_loop term history state (*None*)
+      input_loop term history state
+    | None -> input_loop term history state
   in
 
   let rec frame_loop term ui ctxt =
@@ -586,31 +566,30 @@ let event_loop refresh_frame options interpreter ctxt image =
 
     (** Sleep, check input, and loop *)
     Lwt_unix.sleep refresh_frame >>= fun _ ->
-    (*Lwt_io.read_line Lwt_io.stdin >>= fun str ->
-      Lwt_io.printlf "You typed %S%!" str >>= fun () ->*)
     Lwt_io.printf "Checking stream\n%!" >>= fun () ->
     let elems = Lwt_stream.get_available stream in
     Lwt_io.printf "Size events: %d\n%!" (List.length elems) >>= fun () ->
     match elems with
-    | [sleepy] ->
+    | [Debugger.Request.Sleep sleepy] ->
       Lwt_io.printf "PAUSING\n%!" >>= fun () ->
       sleepy >>= fun () ->
       frame_loop term ui ctxt'
-    | _ ->
-      frame_loop term ui ctxt' in
+    | [Debugger.Request.Bp loc] ->
+      Lwt_io.printf "BP to set at %d\n%!" loc >>= fun () ->
+      frame_loop term ui ctxt'
+    | _ -> frame_loop term ui ctxt' in
 
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
   update_tiles_from_mem options ctxt; (* TODO probably safe to remove *)
   LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
   (*check_small_screen ui;*) (* TODO turn on later *)
-  let state = { Debugger.Command_interpreter.n = 1;
-                Debugger.Command_interpreter.push_channel = Some push;
-                Debugger.Command_interpreter.resume_after_pause = None } in
-  Lwt.finalize (fun () -> Lwt.join
-                   [frame_loop term ui ctxt;
-                    input_loop term (LTerm_history.create []) state]
-               ) (fun () -> LTerm_ui.quit ui)
+  let state = Debugger.Command_interpreter.create push in
+  Lwt.finalize
+    (fun () -> Lwt.join
+        [frame_loop term ui ctxt;
+         input_loop term (LTerm_history.create []) state])
+    (fun () -> LTerm_ui.quit ui)
 
 let run options ctxt image =
   let interpreter = new z80_interpreter image options in
