@@ -1,12 +1,16 @@
 (** A Command received from input, and a Request issued to the z80
     interpreter, which is handles *)
 module Request : sig
-  type printable = Regs [@@ deriving sexp]
+  type printable = Regs
+                 | Insn [@@ deriving sexp]
+
+  type steppable = Frame
+                 | Insn [@@ deriving sexp]
 
   type t = Pause
          | Resume
          | Bp of int
-         | Step
+         | Step of steppable
          | Print of printable [@@deriving sexp]
 end
 
@@ -17,7 +21,7 @@ module Command_interpreter : sig
 
   val create : (Request.t option -> unit) -> state
 
-  val process : state -> string -> (state * string)
+  val process : LTerm_history.t -> state -> string -> (state * string)
 end
 
 (** Reads input and spits out output *)

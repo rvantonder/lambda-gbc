@@ -22,7 +22,7 @@ module Input_loop = struct
           | Sys.Break -> return None
           | exn -> Lwt.fail exn) >>= function
       | Some command ->
-        let state,out = Debugger.Command_interpreter.process state command in
+        let state,out = Debugger.Command_interpreter.process history state command in
         LTerm.fprintls term (make_output state out) >>= fun () ->
         LTerm_history.add history command;
         loop term history state
@@ -88,30 +88,41 @@ module Z80_interpreter_loop = struct
       2) When non-blocking, an unrecognized request should simply step the
       interpreter. Otherwise, each unrecognized command issued will
       "skip" the frame for that cycle. *)
-  let handle_request ctxt step_frame =
+  let handle_request ctxt step_frame step_insn =
     let open Debugger.Request in
     function
-    | Step,_ ->
-      Lwt_io.printf "[+] Event: (step)\n%!" >|= fun () ->
+    | Step Frame,_ ->
+      Lwt_io.printf "[+] Event: %s\n%!"
+      @@ Sexp.to_string (sexp_of_t (Step Frame)) >|= fun () ->
       step_frame ctxt
+    | Step Insn,_ ->
+      Lwt_io.printf "[+] Event: %s\n%!"
+      @@ Sexp.to_string (sexp_of_t (Step Insn)) >|= fun () ->
+      step_insn ctxt
     | Print Regs,_ ->
       Lwt_io.printf "[+] Event: (print regs)\n%!" >|= fun () ->
       ctxt#print_cpu;
+      ctxt
+    | Print Insn,_ ->
+      Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
+      Format.printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
       ctxt
     | _,`Blocking -> return ctxt
     | _,`Non_blocking -> return (step_frame ctxt)
 
   (** Blocking input loop when paused *)
-  let blocking_input_loop_on_pause recv_stream ctxt step_frame =
+  let blocking_input_loop_on_pause recv_stream ctxt step_frame
+      step_insn =
+    let open Debugger.Request in
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
     let rec loop_blocking_while_paused rq ctxt =
       match rq with
-      | Debugger.Request.Resume ->
+      | Resume ->
         Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
         step_frame ctxt
       | _ ->
-        handle_request ctxt step_frame (rq,`Blocking) >>= fun ctxt ->
+        handle_request ctxt step_frame step_insn (rq,`Blocking) >>= fun ctxt ->
         Lwt_stream.next recv_stream >>= fun rq ->
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
@@ -134,12 +145,15 @@ module Z80_interpreter_loop = struct
       let step_frame ctxt =
         Z80_interpreter.step_frame options interpreter ctxt image in
 
+      let step_insn ctxt =
+        Z80_interpreter.step_insn options interpreter ctxt image in
+
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
-         blocking_input_loop_on_pause recv_stream ctxt step_frame
-       | [rq] -> handle_request ctxt step_frame (rq,`Non_blocking)
+         blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn
+       | [rq] -> handle_request ctxt step_frame step_insn (rq,`Non_blocking)
        | _ ->
          (** If empty, steps a frame by default, next ctxt *)
          step_frame ctxt |> return)

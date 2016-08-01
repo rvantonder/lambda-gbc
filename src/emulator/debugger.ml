@@ -4,12 +4,16 @@ open Sexplib
 
 (** A Request issued to the z80 interpreter, which is handles *)
 module Request = struct
-  type printable = Regs [@@ deriving sexp]
+  type printable = Regs
+                 | Insn [@@ deriving sexp]
+
+  type steppable = Frame
+                 | Insn [@@ deriving sexp]
 
   type t = Pause
          | Resume
          | Bp of int
-         | Step
+         | Step of steppable
          | Print of printable [@@deriving sexp]
 end
 
@@ -23,12 +27,17 @@ module Command_interpreter = struct
     {n = 1;
      push_channel}
 
-  let process state (rq : string) =
+  let process history state (rq : string) =
     let open Request in
+    let parse = fun rq -> String.capitalize rq |> Sexp.of_string
+                          |> t_of_sexp in
     let state' =
       try
-        String.capitalize rq |> Sexp.of_string |> t_of_sexp
-        |> fun rq' -> state.push_channel (Some rq'); state
+        match rq with
+        (* XXX hd_exn *)
+        | "" -> LTerm_history.contents history |> List.hd_exn |> parse
+                |> fun rq' -> state.push_channel (Some rq'); state
+        | rq -> parse rq |> fun rq' -> state.push_channel (Some rq'); state
       with
       | Sexplib.Conv.Of_sexp_error (exn,sexp) -> state (*cmd could not be parsed *)
       | exn ->
