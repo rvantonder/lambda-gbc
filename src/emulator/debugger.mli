@@ -1,16 +1,25 @@
-
 (** A Request issued to the z80 interpreter, which is handles *)
 module Request : sig
-  type t = Sleep of unit Lwt.t
+  type printable = Regs
+
+  type t = Pause of unit Lwt.t
+         | Resume
          | Bp of int
+         | Step
+         | Print of printable
 end
 
 (** The type of commands that can be issued *)
 (** A command received on input from user on repl *)
 module Command : sig
+  type printable = Regs [@@deriving sexp]
+
   type t = Pause
          | Resume
-         | Bp of int [@@deriving sexp]
+         | Bp of int
+         | Step
+         | Print of printable
+    [@@deriving sexp]
 end
 
 (** Does the work of processing commands and updating state *)

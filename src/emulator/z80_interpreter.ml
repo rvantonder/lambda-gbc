@@ -202,16 +202,16 @@ class context image options = object(self : 's)
       let name = Var.name flag in
       let value = result_of_reg flag |> to_value |> to_imm1 in
       sprintf "%s=%s" name value in
-    let print2 reg flag = printf "│%8s%4s%-11s│\n" !reg " " !!flag in
+    let print2 reg flag = printf "│%8s%4s%-11s│\n%!" !reg " " !!flag in
     print2 CPU.af CPU.fz;
     print2 CPU.bc CPU.fn;
     print2 CPU.de CPU.fh;
     print2 CPU.hl CPU.fc;
-    printf "│%22s|\n" " ";
-    printf "│%s %4s%8s|\n" (!CPU.sp) " " " ";
-    printf "│PC=%s %4s%8s|\n" (to_imm8 self#pc) " " " ";
-    printf "|k=0x%04x %4s%8s|\n" self#k " " " ";
-    printf "|clock=0x%04x %4s%8s|\n" self#cpu_clock " " " "
+    printf "│%22s|\n%!" " ";
+    printf "│%s %4s%8s|\n%!" (!CPU.sp) " " " ";
+    printf "│PC=%s %4s%8s|\n%!" (to_imm8 self#pc) " " " ";
+    printf "|k=0x%04x %4s%8s|\n%!" self#k " " " ";
+    printf "|clock=0x%04x %4s%8s|\n%!" self#cpu_clock " " " "
 
   method print_lifted_stmts stmts =
     let purple = "\x1b[45m" in
@@ -369,11 +369,11 @@ class ['a] z80_interpreter image options = object(self)
     get () >>= fun ctxt ->
     let open Z80_disassembler in
     print_top ();
-    printf "\n";
+    printf "\n%!";
     ctxt#print_cpu;
     print_bot ();
-    printf "\n";
-    printf "%a\n" Hunk.pp ctxt#current_hunk;
+    printf "\n%!";
+    printf "%a\n%!" Hunk.pp ctxt#current_hunk;
     failwith "Not implemented" |> ignore;
     get () >>= fun ctxt ->
     put ctxt#advance >>= fun () ->

@@ -4,15 +4,25 @@ open Sexplib
 
 (** A Request issued to the z80 interpreter, which is handles *)
 module Request = struct
-  type t = Sleep of unit Lwt.t
+  type printable = Regs
+
+  type t = Pause of unit Lwt.t
+         | Resume
          | Bp of int
+         | Step
+         | Print of printable
 end
 
 (** A command received on input from user on repl *)
 module Command = struct
+  type printable = Regs [@@deriving sexp]
+
   type t = Pause
          | Resume
-         | Bp of int [@@deriving sexp]
+         | Bp of int
+         | Step
+         | Print of printable
+    [@@deriving sexp]
 end
 
 (** A module for a daemon that interprets commands *)
@@ -21,14 +31,14 @@ module Command_interpreter = struct
     (* The command number *)
     n : int;
     (* The Lwt push stream *)
-    push_channel : (Request.t option -> unit);
-    (* Some if we can resume after pause by waking this thread*)
-    resume_after_pause : unit Lwt.u option}
+    push_channel : (Request.t option -> unit)}
+  (* Some if we can resume after pause by waking this thread*)
+  (*resume_after_pause : unit Lwt.u option}*)
 
   let create push_channel =
     {n = 1;
-     push_channel;
-     resume_after_pause = None}
+     push_channel}
+  (*resume_after_pause = None*)
 
   (** How pause/resume works:
       When we see pause, create a sleep/wake thread pair. Send the sleep
@@ -38,20 +48,27 @@ module Command_interpreter = struct
   let try_do (cmd : Command.t) state =
     let open Command in
     match cmd,state with
-    | Pause, {resume_after_pause = None;_} ->
+    | Pause,_ ->
       printf "Valid pause command!\n%!";
       let sleepy,wakey = Lwt.wait () in
       printf "Pushing sleepy!\n%!";
-      state.push_channel (Some (Request.Sleep sleepy));
-      {state with resume_after_pause = Some wakey}
-    | Resume,{resume_after_pause = Some wakey;_} ->
+      state.push_channel (Some (Request.Pause sleepy));
+      state
+    | Resume,_ ->
       printf "Valid resume command!\n%!";
-      Lwt.wakeup wakey ();
-      {state with resume_after_pause = None}
+      (*Lwt.wakeup wakey ();
+        {state with resume_after_pause = None}*)
+      state.push_channel (Some (Request.Resume));
+      state
     | Bp pos,_ -> printf "Breakpoint set @ %d\n%!" pos;
       state.push_channel (Some (Request.Bp pos));
       state
-    | _ -> state
+    | Step,_ ->
+      state.push_channel (Some (Request.Step));
+      state
+    | Print Regs,_ ->
+      state.push_channel (Some (Request.Print Request.Regs));
+      state
 
   let process state (cmd : string) =
     let open Command in

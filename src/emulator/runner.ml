@@ -82,13 +82,32 @@ module Z80_interpreter_loop = struct
        ref_tiles := tiles;
      | None -> ())
 
-  let handle_request ctxt = function
-    | Debugger.Request.Sleep sleepy ->
-      Lwt_io.printf "[+] Event: Pause/Sleep\n%!" >>= fun () ->
-      sleepy
-    | Debugger.Request.Bp loc ->
-      Lwt_io.printf "[+] Event: BP to set at %d\n%!" loc
-  (*    | _ -> return ()*)
+  let handle_request ctxt step_frame =
+    let open Debugger.Request in
+    function
+    | Step ->
+      Lwt_io.printf "[+] Event: (step)\n%!" >|= fun () ->
+      step_frame ctxt
+    | Print Regs ->
+      Lwt_io.printf "[+] Event: (print regs)\n%!" >|= fun () ->
+      ctxt#print_cpu;
+      ctxt
+    | _ -> return ctxt
+
+  (** Blocking input loop when paused *)
+  let input_loop_on_pause recv_stream ctxt step_frame =
+    Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
+    Lwt_stream.next recv_stream >>= fun rq ->
+    let rec loop_blocking_while_paused rq ctxt =
+      match rq with
+      | Debugger.Request.Resume ->
+        Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
+        step_frame ctxt
+      | _ ->
+        handle_request ctxt step_frame rq >>= fun ctxt ->
+        Lwt_stream.next recv_stream >>= fun rq ->
+        loop_blocking_while_paused rq ctxt in
+    loop_blocking_while_paused rq ctxt
 
   let run refresh_rate_frame options ctxt image term recv_stream =
     (** Create screen matrix *)
@@ -99,21 +118,26 @@ module Z80_interpreter_loop = struct
     let ctxt = Z80_interpreter.set_pc ctxt 0 in
 
     let rec loop ui ctxt =
-      Lwt_io.printf "Looping!\n%!" >>= fun () ->
+      (*Lwt_io.printf "Looping!\n%!" >>= fun () ->*)
       (** Render: Set tiles from memory *)
       update_tiles_from_mem options ctxt;
       LTerm_ui.draw ui;
 
-      (** Handle input requests *)
+      let step_frame ctxt =
+        Z80_interpreter.step_frame options interpreter ctxt image in
+
+      (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
-       | [rq] -> handle_request ctxt rq
-       | _ -> return ()) >>= fun () ->
+       | [Debugger.Request.Pause _] ->
+         (** Enter blocking input mode for stream *)
+         input_loop_on_pause recv_stream ctxt step_frame
+       | _ ->
+         (** Steps a frame by default, next ctxt *)
+         step_frame ctxt |> return)
+      >>= fun ctxt' ->
 
       (** Sleep *)
       Lwt_unix.sleep refresh_rate_frame >>= fun _ ->
-
-      (** Steps a frame, next ctxt *)
-      let ctxt' = Z80_interpreter.step_frame options interpreter ctxt image in
       loop ui ctxt' in
 
     loop ui ctxt
