@@ -1,3 +1,17 @@
+## Design
+
+```
+driver.ml # initialize image/parse bootrom options
+   |
+runner.ml # start the interpreter loop and debugger
+   |________________
+  /                 \
+input_loop         interpreter_loop
+|                  |
+|                   ` processes all debug actions will enter blocking lwt mode when debug stepping.
+parse send commands to interpreter recv stream
+```
+
 ## Boot
 
 `DMG_ROM.bin` is the original boot rom that would get loaded at `0x0000`, run
@@ -40,7 +54,7 @@ http://bgb.bircd.org/pandocs.htm#powerupsequence
 Test initial state with something like:
 
 ```
-./driver.native --di --nr -v --file /tmp/q 
+./driver.native --di --nr -v --file /tmp/q
                  ` at every step
                               ` use dummy file, not the default SCREEN one (execution corrupts starting values)
                           `-dump state
@@ -86,3 +100,19 @@ Debug mode:
 
 Then switch to tetris.
 
+
+
+# Thoughts
+
+Added sleep/wake threads above the two threads that get joined. I can pause/resume once. But after that,
+no idea.
+
+BUT! can i create a sleep/resume pair and then send the thread to the frame_loop?
+
+
+
+# Left off:
+
+running `./driver.native --bootrom --speed 1.0 ` and testing debugger.
+
+Debugger commands: (print insn), (print regs), pause, resume, help

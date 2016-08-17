@@ -338,30 +338,6 @@ class ['a] z80_interpreter image options = object(self)
         self#print_interpreted_stmts stmts;
       super#eval stmts
 
-  (** 2. *)
-  method! eval_stmt stmt =
-    super#eval_stmt stmt
-
-  (** 3. *)
-  method! eval_move v e =
-    super#eval_move v e
-
-  (** 4. *)
-  method! eval_jmp (exp : Bil.exp) =
-    super#eval_jmp exp
-
-  (** 5. *)
-  method! eval_while ~cond ~body =
-    super#eval_while ~cond ~body
-
-  (** 6. *)
-  method! eval_if ~cond ~yes ~no =
-    super#eval_if ~cond ~yes ~no
-
-  (** 7. *)
-  method! eval_cpuexn exn =
-    super#eval_cpuexn exn
-
   (** 8. *)
   (** Unhandled instructions will simply advance pc. Need to store
       current statement execution in ctxt. ctxt should do lifting. *)
@@ -394,19 +370,19 @@ let print_ctxt ctxt options =
 
 (* TODO, I don't like how we create a new interpreter here and don't
    return it... shouldn't be needed... just return ctxt*)
-let init image options =
-  let stmts = Boot.clean_state in
+let base_init image options stmts =
   let ctxt = new context image options in
   let interpreter = new z80_interpreter image options in
   let start = interpreter#eval stmts in
   Monad.State.exec start ctxt
 
+let init image options =
+  let stmts = Boot.clean_state in
+  base_init image options stmts
+
 let init_default image options =
   let stmts = Boot.ready_state in
-  let ctxt = new context image options in
-  let interpreter = new z80_interpreter image options in
-  let start = interpreter#eval stmts in
-  Monad.State.exec start ctxt
+  base_init image options stmts
 
 let sync_if_needed ctxt bil_stmt =
   match bil_stmt with
@@ -461,7 +437,6 @@ let step_insn options interpreter ctxt image =
            failwith @@ sprintf "0x%x steps reached" k)
      | None -> ());
     ctxt (* TODO handle interrupts here *)
-
 
 let max_steps = 69905
 

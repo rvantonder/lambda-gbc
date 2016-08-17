@@ -14,15 +14,11 @@ let store_ addr v = Bil.store ~mem:(Bil.var CPU.mem)
 (** All registers and flags set to 0. Memory undefined *)
 let clean_state =
   Set.fold ~init:[] (CPU.gpr ++ CPU.flags) ~f:(fun stmts v ->
-      if Var.typ v = reg8_t then
-        Bil.(v := i8 0)::stmts
-      else if Var.typ v = reg16_t then
-        Bil.(v := i16 0)::stmts
-      else if Var.typ v = bool_t then
-        Bil.(v := false_)::stmts
-      else
-        failwith "reg is not of type reg8_t, reg16_t or flag. \
-                  Cannot continue.")
+      match Var.typ v with
+      | Type.Imm 8 -> Bil.(v := i8 0)::stmts (* if Var.typ v = reg8_t then *)
+      | Type.Imm 16 ->  Bil.(v := i16 0)::stmts (* reg16_t *)
+      | Type.Imm 1 ->  Bil.(v := false_)::stmts (* bool_t *)
+      | _ -> failwith "reg is not of type reg8_t, reg16_t or flag.")
 
 let ready_state =
   let open Bil in

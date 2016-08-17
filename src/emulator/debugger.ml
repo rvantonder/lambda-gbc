@@ -5,16 +5,20 @@ open Sexplib
 (** A Request issued to the z80 interpreter, which is handles *)
 module Request = struct
   type printable = Regs
-                 | Insn [@@ deriving sexp]
+                 | Insn [@@ deriving sexp, variants]
 
   type steppable = Frame
-                 | Insn [@@ deriving sexp]
+                 | Insn [@@ deriving sexp, variants]
 
   type t = Pause
          | Resume
+         | Help
          | Bp of int
          | Step of steppable
-         | Print of printable [@@deriving sexp]
+         | Print of printable [@@deriving sexp, variants]
+
+  (* TODO: needs to handle int/steppable types *)
+  let pp ppf rq = Format.fprintf ppf "%s" @@ Sexp.to_string @@ sexp_of_t rq
 end
 
 (** A module for a daemon that interprets commands *)
@@ -24,20 +28,19 @@ module Command_interpreter = struct
     push_channel : (Request.t option -> unit)}
 
   let create push_channel =
-    {n = 1;
-     push_channel}
+    {n = 1; push_channel}
 
   let process history state (rq : string) =
+    let open Option in
     let open Request in
-    let parse = fun rq -> String.capitalize rq |> Sexp.of_string
-                          |> t_of_sexp in
+    let parse rq = String.capitalize rq |> Sexp.of_string |> t_of_sexp in
     let state' =
-      try
-        match rq with
-        (* XXX hd_exn *)
+      try match rq with
+        (* An empty command will take the most recent command
+           executed. XXX fix hd_exn to hd *)
         | "" -> LTerm_history.contents history |> List.hd_exn |> parse
-                |> fun rq' -> state.push_channel (Some rq'); state
-        | rq -> parse rq |> fun rq' -> state.push_channel (Some rq'); state
+                |> some |> state.push_channel; state
+        | rq -> parse rq |> some |> state.push_channel; state
       with
       | Sexplib.Conv.Of_sexp_error (exn,sexp) -> state (*cmd could not be parsed *)
       | exn ->

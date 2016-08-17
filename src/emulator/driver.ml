@@ -115,12 +115,8 @@ let () =
   if options.v then
     printf "Initializing interpreter...\n";
   let initial_ctxt =
-    if options.bootrom then
-      Z80_interpreter.init image options
-    else
-      Z80_interpreter.init_default image options
+    if options.bootrom then Z80_interpreter.init image options
+    else Z80_interpreter.init_default image options
   in
-  if options.v then
-    initial_ctxt#print_cpu;
-  Runner.run options initial_ctxt image |> ignore;
-  ()
+  if options.v then initial_ctxt#print_cpu;
+  Runner.run options initial_ctxt image |> ignore

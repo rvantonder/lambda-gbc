@@ -2,16 +2,19 @@
     interpreter, which is handles *)
 module Request : sig
   type printable = Regs
-                 | Insn [@@ deriving sexp]
+                 | Insn [@@ deriving sexp, variants]
 
   type steppable = Frame
-                 | Insn [@@ deriving sexp]
+                 | Insn [@@ deriving sexp, variants]
 
   type t = Pause
          | Resume
+         | Help
          | Bp of int
          | Step of steppable
-         | Print of printable [@@deriving sexp]
+         | Print of printable [@@deriving sexp, variants]
+
+  val pp : Format.formatter -> t -> unit
 end
 
 (** Does the work of processing commands and updating state *)
