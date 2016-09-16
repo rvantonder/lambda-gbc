@@ -69,11 +69,9 @@ let calc ~r (w : int) (op : [`ADD | `SUB]) =
     | #Z80.Reg16.t as r16,`SUB -> Bil.(!r16 - int (i16 w)) in
   Bil.(!$r := exp)
 
-let inc ~r =
-  calc ~r 1 `ADD
+let inc ~r = calc ~r 1 `ADD
 
-let dec ~r =
-  calc ~r 1 `SUB
+let dec ~r = calc ~r 1 `SUB
 
 (** [b] is b0 or b1. [f] is Env.f* *)
 let set_flag ~f ~(b : word) = [Bil.(f := int b)]
@@ -83,6 +81,7 @@ let set_0 ~f = set_flag ~f ~b:Word.b0
 let lift (stmt : Z80.Stmt.t) =
   match stmt with
   | `NOP,_ -> []
+
   | `XOR,[#Z80.Reg8.t as r] ->
     let exp = Bil.(!r lxor var Env.a) in
     [Bil.(!$ r := exp)] @
@@ -90,9 +89,12 @@ let lift (stmt : Z80.Stmt.t) =
     set_0 Env.fn @
     set_0 Env.fh @
     set_0 Env.fc
+
   (* TODO endian correct? I don't think so...*)
   | `JP,[`Imm x;`Imm y] ->[Bil.(jmp (int Word.(x@.y)))]
+
   | `JP,[#Z80.Reg8.t as target] -> [Bil.jmp !target]
+
   | `JR,[#Z80.Cond.t as c; `Imm x] ->
     (*let x16 = Word.concat (Word.of_int ~width:8 0xff) x in*)
     let x16 = Bil.((cast SIGNED 16) (int x)) in
@@ -103,6 +105,7 @@ let lift (stmt : Z80.Stmt.t) =
      | `FNZ -> [Bil.(if_ (lnot (var Env.fz)) true_ false_ )]
      | `FZ -> [Bil.(if_ (var Env.fz) true_ false_)]
      | _ -> [Bil.special ("Unimplemented" |> highlight)])
+
   (*Opposite of the nth bit is written into the Z flag. C is preserved,
     N is reset, H is set, and S and P/V are undefined.*)
   | `JR,[`Imm x;] ->
@@ -137,6 +140,7 @@ let lift (stmt : Z80.Stmt.t) =
   (* Generalization to generous? I don't think so: this always means
       store to address of Reg16 *)
   | `LD,[#Z80.Reg16.t as r1; #Z80.Reg8.t as r2 ] -> [store_to ~dst:!r1 ~src:!r2]
+
   (* LD for special cases where hl is incremented/decremented *)
   | `LD,[#Z80.Reg16.t as r1; `Imm c; #Z80.Reg8.t as r2] ->
     let update =
@@ -145,24 +149,29 @@ let lift (stmt : Z80.Stmt.t) =
       | 255 -> [dec r1]
       | d -> failwith @@ sprintf "Impossible: %d" d in
     [store_to ~dst:!r1 ~src:!r2] @ update
+
   (* 0xFF00 + reg C, reg X. Other (shorter) options: concatenate FF and C,
       but this will make the pattern that I match on less specific,
       and harder to determine where it comes from. *)
   | `LD,[`Imm x; `Imm y; #Z80.Reg8.t as r1; #Z80.Reg8.t as r2] ->
     let w = Word.(y@.x) in
     [store_to ~dst:(Bil.(to_16 !r1 + int w)) ~src:!r2]
+
   (* (x@.y) <- r. TODO,combine with below with offset 0 *)
   | `LD,[`Imm x; `Imm y; #Z80.Reg8.t as r] ->
     let w = Word.(y@.x) in
     [store_to ~dst:(Bil.int w) ~src:!r]
+
   (* (x@.y) + z <- r *)
   | `LD,[`Imm x; `Imm y; `Imm z; #Z80.Reg8.t as r] ->
     let w = Word.((y@.x) + up16 z) in (* TODO use cast instead of word conv? *)
     [store_to ~dst:(Bil.int w) ~src:!r]
+
   (* A = (ff00 + z *)
   | `LD,[#Z80.Reg8.t as r; `Imm x; `Imm y; `Imm z] ->
     let w = Word.((y@.x) + up16 z) in  (* TODO use cast instead of word conv? *)
     [load_from ~dst:!$r ~src:(Bil.int w)]
+
   (* Thank you http://gameboy.mongenel.com/dmg/opcodes.html *)
   | `CALL,[`Imm x; `Imm y] ->
     [Bil.(store_to16 ~dst:(var Env.sp) ~src:(var Env.pc));
@@ -173,17 +182,21 @@ let lift (stmt : Z80.Stmt.t) =
                                             approach. jump instead *)
      Bil.(jmp (int Word.(x@.y)))
     ]
+
   | `PUSH,[#Z80.Reg16.t as r] ->
     [Bil.(store_to16 ~dst:(var Env.sp) ~src:!r);
      Bil.(Env.sp := var Env.sp - int (i16 2))]
+
   | `POP,[#Z80.Reg16.t as r] ->
     [Bil.(Env.sp := var Env.sp + int (i16 2)); (* TODO use inc? *)
      Bil.(load_from16 ~dst:!$r ~src:(var Env.sp))]
+
   | `RET,[] ->
     let target = Bil.(load ~mem:(var Env.mem) ~addr:(var Env.sp)
                         LittleEndian `r16) in
     [Bil.(Env.sp := var Env.sp + int (i16 2));
      Bil.(jmp target)]
+
   (* through carry flag : http://gameboy.mongenel.com/dmg/opcodes.html *)
   | `RL,[#Z80.Reg8.t as r] ->
     let tmp = Var.create "c_flag" bool_t in
@@ -193,6 +206,7 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(Env.fz := !r = (int (i8 0)))] @
     set_0 ~f:Env.fn @
     set_0 ~f:Env.fh
+
   (* Same as `RL `A, but less ticks. Fix later *)
   | `RLA,[#Z80.Reg8.t as r] ->
     let tmp = Var.create "c_flag" bool_t in
@@ -202,6 +216,7 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(Env.fz := !r = (int (i8 0)))] @
     set_0 ~f:Env.fn @
     set_0 ~f:Env.fh
+
   | `CP,[`Imm x] -> (* same as SUB but discards result*)
     let tmp = Var.create "tmp" reg8_t in
     [Bil.(tmp := (var Env.a) - int x)] @
@@ -210,6 +225,7 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(Env.fh := ((var tmp land (int (i8 0xf))) >
                      ((var Env.a) land (int (i8 0xf)))))] @
     [Bil.(Env.fc := (var tmp) < (int (i8 0)))]
+
   | `CP,[#Z80.Reg16.t as r] ->
     let tmp = Var.create "tmp" reg8_t in
     let load_from =
@@ -220,6 +236,7 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(Env.fh := ((var tmp land (int (i8 0xf))) >
                      ((var Env.a) land (int (i8 0xf)))))] @
     [Bil.(Env.fc := (var tmp) < (int (i8 0)))]
+
   (* [r1] is always `A *)
   | `SUB,[#Z80.Reg8.t as r1; #Z80.Reg8.t as r2] ->
     [Bil.(!$r1 := !r1 - !r2)] @
@@ -228,6 +245,7 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(Env.fh := ((!r1 land (int (i8 0xf))) >
                      ((var Env.a) land (int (i8 0xf)))))] @
     [Bil.(Env.fc := (!r1 < (int (i8 0))))]
+
   (* [r1] is always `A *)
   | `ADD,[#Z80.Reg8.t as r1; #Z80.Reg16.t as r2] ->
     let load_from =
@@ -238,5 +256,6 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(Env.fh := ((!r1 land (int (i8 0xf))) >
                      ((var Env.a) land (int (i8 0xf)))))] @
     [Bil.(Env.fc := (!r1 < (int (i8 0))))]
+
   | `Undef,_ -> [Bil.special ("Undefined" |> highlight)]
   | _ -> [Bil.special ("Unimplemented" |> highlight)]

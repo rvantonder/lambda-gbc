@@ -115,4 +115,4 @@ BUT! can i create a sleep/resume pair and then send the thread to the frame_loop
 
 running `./driver.native --bootrom --speed 1.0 ` and testing debugger.
 
-Debugger commands: (print insn), (print regs), pause, resume, help
+Debugger commands: (print insn), (print regs), pause, resume, helpde
