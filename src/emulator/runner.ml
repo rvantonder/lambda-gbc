@@ -145,11 +145,12 @@ module Z80_interpreter_loop = struct
       LTerm_ui.draw ui;
 
       let step_frame ctxt =
-        (*SM.exec interp#step_frame ctxt in*)
-        Z80_interpreter.step_frame options interp ctxt image in
+        SM.exec interp#step_frame ctxt in
+      (*Z80_interpreter.step_frame options interp ctxt image in*)
 
       let step_insn ctxt =
-        Z80_interpreter.step_insn options interp ctxt image in
+        SM.exec interp#step_insn ctxt in
+      (*Z80_interpreter.step_insn options interp ctxt image in*)
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with

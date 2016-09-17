@@ -364,7 +364,7 @@ class ['a] z80_interpreter image options = object(self)
         self#step_insn >>= fun () ->
         get () >>= fun ctxt ->
         let cycles = ctxt#current_hunk.cycles in
-        repeat cycles
+        repeat (count+cycles)
       else
         return () in
     repeat 0
