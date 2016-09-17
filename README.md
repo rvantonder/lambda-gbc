@@ -90,29 +90,10 @@ Hex dump and disassemble at offset
 `./driver.native --hd --disas 0x100`
 
 
-# TODO
-
-Get it to work fully on bootrom, with updating Nintendo logo.
-
-Debug mode:
-
-`./driver.native --bootrom --speed 1.0 --di`
-
-Then switch to tetris.
-
-
-
-# Thoughts
-
-Added sleep/wake threads above the two threads that get joined. I can pause/resume once. But after that,
-no idea.
-
-BUT! can i create a sleep/resume pair and then send the thread to the frame_loop?
-
-
-
 # Left off:
 
 running `./driver.native --bootrom --speed 1.0 ` and testing debugger.
 
 Debugger commands: (print insn), (print regs), pause, resume, helpde
+
+zooming out will still render the nintendo screen.

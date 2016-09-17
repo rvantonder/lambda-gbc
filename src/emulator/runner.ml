@@ -3,8 +3,11 @@ open Format
 open Options
 open Bap.Std
 
+module SM = Monad.State
+
 let ref_tiles = ref [] (* XXX get rid of it later *)
 
+(** For now, for debugger. But will extend to be for general input *)
 module Input_loop = struct
   open Lwt
   open LTerm_key
@@ -18,12 +21,15 @@ module Input_loop = struct
       Lwt.catch (fun () ->
           let rl = new read_line ~term
             ~history:(LTerm_history.contents history) ~state in
-          rl#run >|= fun command -> Some command) (function
+          rl#run >|= fun command -> Some command)
+        (function
           | Sys.Break -> return None
-          | exn -> Lwt.fail exn) >>= function
+          | exn -> Lwt.fail exn) >>=
+      function
       | Some command ->
         (* Parse and send the command *)
-        let state',out = Debugger.Command_interpreter.process history state command in
+        let state',out =
+          Debugger.Command_interpreter.process history state command in
         LTerm.fprintls term (make_output state' out) >>= fun () ->
         LTerm_history.add history command;
         loop term history state'
@@ -43,13 +49,6 @@ module Z80_interpreter_loop = struct
   let draw_bg ctxt tiles =
     Background.from_tile_list tiles ctxt |> Background.render
 
-  let draw_gary ctxt =
-    let open Sprites in
-    let open Qsprite in
-    let gary = Sprites.gary ~offsetx:1 ~offsety:1 ctxt in
-    Qsprite.move gary 8 8;
-    Qsprite.render gary
-
   (** TODO: why if i raise exception here does it get ignored? *)
   let draw ui matrix tiles =
     let open LTerm_geom in
@@ -60,8 +59,7 @@ module Z80_interpreter_loop = struct
       (if size.rows < 289 || size.cols < 1430 then
        raise (Failure "I'm not going to continue drawing. Screen too small"));*)
     LTerm_draw.clear ctxt;
-    draw_bg ctxt tiles;
-    draw_gary ctxt
+    draw_bg ctxt tiles
 
   let storage_of_context ctxt =
     let open Option in
@@ -103,28 +101,31 @@ module Z80_interpreter_loop = struct
       ctxt
     | Print Insn,_ ->
       Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
-      Format.printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
+      printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
       ctxt
+    | Bp p,_ ->
+      Lwt_io.printf "[+] Event: (Bp 0x%x)" p >|= fun () -> ctxt
     | Help,_ ->
-      Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
+      Lwt_io.printf "[+] Event: help\n%!" >|= fun () ->
       let pp rq_variant =
         let rq = rq_variant.Variantslib.Variant.name in
-        printf "%s@." rq in
-      (* (print insn) *)
+        printf "%s\n%!" rq in
       Variants.iter ~pause:pp ~resume:pp ~bp:pp ~step:pp ~print:pp ~help:pp;
       ctxt
-    | _,`Blocking -> return ctxt (* Any other command in the blocking
-                                    state is ctxt *)
-    | _,`Non_blocking -> return (step_frame ctxt) (* Any other command
-                                                     in the non-blocking
-                                                     state is step_frame (why?)*)
+    (* Any other command in the blocking state is ctxt *)
+    | _,`Blocking -> return ctxt
+    (* Any other command in the non-blocking state is step_frame (why?)*)
+    | _,`Non_blocking -> return ctxt
 
   (** Blocking input loop when paused *)
-  let blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn =
+  let blocking_input_loop_on_pause
+      ctxt
+      recv_stream step_frame
+      step_insn =
     let open Debugger.Request in
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
-    let rec loop_blocking_while_paused rq ctxt =
+    let rec loop_blocking_while_paused rq =
       match rq with
       | Resume ->
         (* On resume, step_frame or step_insn? step_insn slow for
@@ -132,40 +133,43 @@ module Z80_interpreter_loop = struct
         Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
         step_frame ctxt
       | _ ->
-        handle_request ctxt step_frame step_insn (rq,`Blocking) >>= fun ctxt ->
+        handle_request ctxt step_frame step_insn (rq,`Blocking) >>= fun _ ->
         Lwt_stream.next recv_stream >>= fun rq ->
-        loop_blocking_while_paused rq ctxt in
-    loop_blocking_while_paused rq ctxt
+        loop_blocking_while_paused rq
+    in
+    loop_blocking_while_paused rq
 
   let run refresh_rate_frame options ctxt image term recv_stream =
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
     (** Create the interpreter *)
-    let interpreter = new Z80_interpreter.z80_interpreter image options in
-    let ctxt = Z80_interpreter.set_pc ctxt 0 in
+    let interp = new Z80_interpreter.z80_interpreter image options in
 
     let rec loop ui ctxt =
       let open Debugger.Request in
       (** Render: Set tiles from memory *)
       update_tiles_from_mem options ctxt;
+
       LTerm_ui.draw ui;
 
-      let step_frame ctxt =
-        Z80_interpreter.step_frame options interpreter ctxt image in
-
-      let step_insn ctxt =
-        Z80_interpreter.step_insn options interpreter ctxt image in
+      let step_insn ctxt = SM.exec interp#step_insn ctxt in
+      let step_frame ctxt = SM.exec interp#step_frame ctxt in
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
-         blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn
-       | [rq] -> handle_request ctxt step_frame step_insn (rq,`Non_blocking)
+         blocking_input_loop_on_pause ctxt recv_stream step_frame step_insn
+       | [rq] ->
+         (** Handle request without stopping execution. Steps a frame *)
+         handle_request ctxt step_frame step_insn (rq,`Non_blocking)
        | _ ->
          (** If empty, steps a frame by default, next ctxt *)
          step_frame ctxt |> return)
+      (* ctxt' is unused result state. used to
+         have to pass it along in loop
+         no longer. *)
       >>= fun ctxt' ->
 
       (** Sleep *)
@@ -185,10 +189,19 @@ let start_event_loop refresh_rate_frame options ctxt image =
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
   (*check_small_screen ui;*) (* TODO turn on later *)
+
+  (* if debugging is enabled, send Pause NOW. This is EVIL because it should
+     go thruogh the command interpreter. Fix later. *)
+  send_stream (Some Debugger.Request.Pause);
+
+  let interpreter_loop = Z80_interpreter_loop.run
+      refresh_rate_frame options ctxt image term recv_stream in
+  let input_loop =
+    Input_loop.run term (LTerm_history.create []) send_stream in
+
   Lwt.finalize
     (fun () -> Lwt.join
-        [Z80_interpreter_loop.run refresh_rate_frame options ctxt image term recv_stream;
-         Input_loop.run term (LTerm_history.create []) send_stream])
+        [interpreter_loop; input_loop])
     (fun () -> return ()) (* TODO: cleanup. somehow Lterm_ui.quit ui *)
 
 let run options ctxt image =

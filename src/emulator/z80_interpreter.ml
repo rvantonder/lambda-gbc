@@ -65,9 +65,27 @@ let sync reg =
   | Type.Imm 1 -> [] (* skip flag *)
   | _ -> failwith "Invalid register type: not 8 or 16 bits"
 
+let sync_if_needed ctxt bil_stmt =
+  match bil_stmt with
+  | Bil.Move (v,_) -> Stmt.eval (sync v) ctxt
+  | _ -> ctxt
+
 (** Set pc to addr *)
 let set_pc ctxt (addr : int) =
   ctxt#with_pc (Bil.Imm (i16 addr))
+
+(** Substitute pc with value *)
+let sub_pc ctxt stmts =
+  (object inherit Stmt.mapper
+    method! map_var v =
+      (*if CPU.pc  = v then*) (* todo *)
+      if Var.name v = "PC" then
+        match ctxt#pc with
+        | Bil.Imm pc -> Bil.int pc
+        | _ -> failwith "Cannot substitute pc, not a value"
+      else
+        Bil.var v
+  end)#run stmts
 
 let get_pc ctxt =
   match ctxt#pc with
@@ -237,18 +255,6 @@ class context image options = object(self : 's)
       printf "Current hunk %a\n" Hunk.pp hunk;
     {< current_hunk = hunk >}
 
-  (** Substitute pc with value *)
-  method sub_pc stmts =
-    (object inherit Stmt.mapper
-      method! map_var v =
-        if Var.name v = "PC" then
-          match self#pc with
-          | Bil.Imm pc -> Bil.int pc
-          | _ -> failwith "Cannot substitute pc, not a value"
-        else
-          Bil.var v
-    end)#run stmts
-
   method lift =
     let bil = Lifter.lift current_hunk.stmt in
     if options.di then
@@ -274,7 +280,11 @@ class ['a] z80_interpreter image options = object(self)
   constraint 'a = #context
   inherit ['a] bili as super
 
-  method print_interpreted_stmts stmts =
+  val frame_steps = 69905
+
+  method private frame_steps = frame_steps
+
+  method private print_interpreted_stmts stmts =
     let aqua = "\x1b[46m" in
     let restore = "\x1b[40m" in
     List.iter stmts ~f:(fun stmt ->
@@ -328,15 +338,40 @@ class ['a] z80_interpreter image options = object(self)
       here, and not advance pc in that case, it is already where it
       needs to be! *)
   method! eval stmts =
-    match stmts with
-    | [] -> super#eval stmts
-    | stmts ->
-      update (fun ctxt -> ctxt#advance) >>= fun _ ->
+    get () >>= fun ctxt ->
+    if debug then
+      self#print_interpreted_stmts stmts;
+    super#eval stmts
+
+  method step_insn =
+    get () >>= fun ctxt ->
+    update (fun ctxt -> ctxt#decode) >>= fun () ->
+    update (fun ctxt -> ctxt#lift) >>= fun () ->
+    get () >>= fun ctxt ->
+    match ctxt#get_current_bil with
+    | [] -> put ctxt#advance (* no eval called, advance. possibly halt *)
+    | bil ->
+      update (fun ctxt -> ctxt#advance) >>= fun () ->
       get () >>= fun ctxt ->
-      let stmts = ctxt#sub_pc stmts in
-      if debug then
-        self#print_interpreted_stmts stmts;
-      super#eval stmts
+      sub_pc ctxt bil |>
+      self#eval >>= fun () ->
+      update (fun ctxt ->
+          List.fold ~init:ctxt bil ~f:(fun ctxt bil ->
+              sync_if_needed ctxt bil)) >>= fun () ->
+      update (fun ctxt -> ctxt#inc_k) >>= fun () ->
+      update (fun ctxt -> ctxt#inc_cpu_clock)
+
+  (* Possibly start not at 0, but total_count % 69950 *)
+  method step_frame =
+    let rec repeat count =
+      if count < self#frame_steps then
+        self#step_insn >>= fun () ->
+        get () >>= fun ctxt ->
+        let cycles = ctxt#current_hunk.cycles in
+        repeat cycles
+      else
+        return () in
+    repeat 0
 
   (** 8. *)
   (** Unhandled instructions will simply advance pc. Need to store
@@ -355,6 +390,9 @@ class ['a] z80_interpreter image options = object(self)
     put ctxt#advance >>= fun () ->
     super#eval_special s
     (** /BILI base class methods *)
+
+
+
 end
 
 (** [ctxt] is synonymous with state. this prints the register state *)
@@ -370,24 +408,20 @@ let print_ctxt ctxt options =
 
 (* TODO, I don't like how we create a new interpreter here and don't
    return it... shouldn't be needed... just return ctxt*)
-let base_init image options stmts =
+let base_init image options stmts pc =
   let ctxt = new context image options in
+  let ctxt = set_pc ctxt pc in
   let interpreter = new z80_interpreter image options in
   let start = interpreter#eval stmts in
   Monad.State.exec start ctxt
 
-let init image options =
+let init image options pc =
   let stmts = Boot.clean_state in
-  base_init image options stmts
+  base_init image options stmts pc
 
-let init_default image options =
+let init_default image options pc =
   let stmts = Boot.ready_state in
-  base_init image options stmts
-
-let sync_if_needed ctxt bil_stmt =
-  match bil_stmt with
-  | Bil.Move (v,_) -> Stmt.eval (sync v) ctxt
-  | _ -> ctxt
+  base_init image options stmts pc
 
 let render options ctxt =
   let open Lwt in
@@ -427,14 +461,13 @@ let step_insn options interpreter ctxt image =
      | Some k ->
        (*0xbb34 *)
        if ctxt#k = k then
-         (
-           if options.v then
-             (printf "Dumping vram\n";
-              ctxt#dump_vram);
-           (*if options.v then
-             (printf "Rendering\n";
-              render options ctxt);*)
-           failwith @@ sprintf "0x%x steps reached" k)
+         (if options.v then
+            (printf "Dumping vram\n";
+             ctxt#dump_vram);
+          (*if options.v then
+            (printf "Rendering\n";
+             render options ctxt);*)
+          failwith @@ sprintf "0x%x steps reached" k)
      | None -> ());
     ctxt (* TODO handle interrupts here *)
 

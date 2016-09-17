@@ -46,6 +46,7 @@ let draw_bg ctxt tiles =
   Background.from_tile_list tiles ctxt
   |> Background.render
 
+(* XXX nuke gary *)
 let draw_gary ctxt =
   let open Sprites in
   let open Qsprite in
@@ -58,8 +59,8 @@ let draw ui matrix tiles =
   let ctxt = LTerm_draw.context matrix size in
   Format.printf "Size: %s\n" @@ string_of_size size;
   LTerm_draw.clear ctxt;
-  draw_bg ctxt tiles;
-  draw_gary ctxt
+  draw_bg ctxt tiles
+(*draw_gary ctxt*) (*XXX nuke gary *)
 
 let main tiles =
   printf "Before lazy force\n%!";
