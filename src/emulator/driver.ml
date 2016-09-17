@@ -114,10 +114,4 @@ let () =
   disassemble_linear image options;
   if options.v then
     printf "Initializing interpreter...\n";
-  let pc = 0 in
-  let initial_ctxt =
-    if options.bootrom then Z80_interpreter.init image options pc
-    else Z80_interpreter.init_default image options pc
-  in
-  if options.v then initial_ctxt#print_cpu;
-  Runner.run options initial_ctxt image |> ignore
+  Runner.run options image |> ignore

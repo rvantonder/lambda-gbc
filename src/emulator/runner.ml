@@ -81,7 +81,7 @@ module Z80_interpreter_loop = struct
       interpreter. Otherwise, each unrecognized command issued will
       "skip" the frame for that cycle. *)
   let handle_request ctxt step_frame step_insn (rq,state) =
-    let open Debugger_cli.Request in
+    let open Debugger_types.Request in
     match rq,state with
     | Step Frame,_ ->
       Lwt_io.printf "[+] Event: %s\n%!"
@@ -115,7 +115,7 @@ module Z80_interpreter_loop = struct
 
   (** Blocking input loop when paused *)
   let blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn =
-    let open Debugger_cli.Request in
+    let open Debugger_types.Request in
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
     let rec loop_blocking_while_paused rq ctxt =
@@ -131,26 +131,25 @@ module Z80_interpreter_loop = struct
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
 
-  let run refresh_rate_frame options ctxt image term recv_stream =
+  (** Design: the interpreter can only be advanced by step_insn and step_frame
+      in run. Nothing else about the interpreter is exposed *)
+  let run
+      step_insn
+      step_frame
+      refresh_rate_frame
+      options ctxt
+      image
+      term
+      recv_stream =
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
-    (** Create the interpreter *)
-    let interp = new Z80_interpreter.z80_interpreter image options in
-
     let rec loop ui ctxt =
-      let open Debugger_cli.Request in
+      let open Debugger_types.Request in
       (** Render: Set tiles from memory *)
       update_tiles_from_mem options ctxt;
       LTerm_ui.draw ui;
 
-      let step_frame ctxt =
-        SM.exec interp#step_frame ctxt in
-      (*Z80_interpreter.step_frame options interp ctxt image in*)
-
-      let step_insn ctxt =
-        SM.exec interp#step_insn ctxt in
-      (*Z80_interpreter.step_insn options interp ctxt image in*)
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
@@ -170,7 +169,74 @@ module Z80_interpreter_loop = struct
     loop ui ctxt
 end
 
-let start_event_loop refresh_rate_frame options ctxt image =
+let set_up_input_loop term send_stream =
+  Input_loop.run term (LTerm_history.create []) send_stream
+
+let set_up_base_interp_loop
+    interp
+    ctxt
+    refresh_rate_frame
+    options
+    image
+    term
+    recv_stream =
+
+  let step_frame ctxt = SM.exec interp#step_frame ctxt in
+  let step_insn ctxt = SM.exec interp#step_insn ctxt in
+  Z80_interpreter_loop.run step_insn step_frame refresh_rate_frame options ctxt
+    image term recv_stream
+
+let i16 = Word.of_int ~width:16
+
+let set_up_interp_loop
+    refresh_rate_frame
+    options ctxt
+    image term recv_stream =
+
+  let interp =
+    new Z80_interpreter.z80_interpreter image options in
+
+  let stmts =
+    if options.bootrom then Boot.clean_state
+    else Boot.ready_state in
+
+  let ctxt = new Z80_interpreter.context image options in
+  let ctxt = ctxt#with_pc (Bil.Imm (i16 0)) in
+  let start = interp#eval stmts in
+
+  let ctxt = Monad.State.exec start ctxt in
+
+  set_up_base_interp_loop
+    interp ctxt refresh_rate_frame options image term recv_stream
+
+(** The difference between the normal interpreter and debug interpreter is that
+    we give the debug interpreter the send_event_stream. The same send
+    event_stream that the user publishes on. This is so that the debugger itself
+    can issue requests such as "Pause" when a breakpoint is hit. Worth asking if
+    it should have its own debug stream.
+*)
+let set_up_debug_interp_loop refresh_rate_frame options
+    image term recv_stream send_stream =
+
+  let interp =
+    new Z80_interpreter_debugger.z80_interpreter_debugger image options
+      send_stream in
+
+  let stmts =
+    if options.bootrom then Boot.clean_state
+    else Boot.ready_state in
+
+  let ctxt = new Z80_interpreter_debugger.context image options in
+  let ctxt = ctxt#with_pc (Bil.Imm (i16 0)) in
+  let start = interp#eval stmts in
+
+  let ctxt = Monad.State.exec start ctxt in
+
+  set_up_base_interp_loop
+    interp ctxt refresh_rate_frame options image term recv_stream
+
+
+let start_event_loop refresh_rate_frame options image =
   let open Lwt in
   let open LTerm_key in
 
@@ -180,15 +246,21 @@ let start_event_loop refresh_rate_frame options ctxt image =
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
   (*check_small_screen ui;*) (* TODO turn on later *)
+
+  let interp_loop = set_up_debug_interp_loop refresh_rate_frame
+      options image term recv_stream send_stream in
+
+  let input_loop = set_up_input_loop term send_stream in
+
   Lwt.finalize
     (fun () -> Lwt.join
-        [Z80_interpreter_loop.run refresh_rate_frame options ctxt image term recv_stream;
-         Input_loop.run term (LTerm_history.create []) send_stream])
+        [interp_loop;
+         input_loop])
     (fun () -> return ()) (* TODO: cleanup. somehow Lterm_ui.quit ui *)
 
-let run options ctxt image =
+let run options image =
   try
-    Lwt_main.run (start_event_loop options.frame_speed options ctxt image)
+    Lwt_main.run (start_event_loop options.frame_speed options image)
   with
   | LTerm_draw.Out_of_bounds ->
     failwith "Rendering is ON, out of bounds!\n"

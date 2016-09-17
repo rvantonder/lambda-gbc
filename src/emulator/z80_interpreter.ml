@@ -399,23 +399,6 @@ let print_ctxt ctxt options =
       | Bil.Mem s -> () (* Our example doesn't use memory *)
       | Bil.Bot -> () (* Our example has no undefined results *))
 
-(* TODO, I don't like how we create a new interpreter here and don't
-   return it... shouldn't be needed... just return ctxt*)
-let base_init image options stmts pc =
-  let ctxt = new context image options in
-  let ctxt = set_pc ctxt pc in
-  let interpreter = new z80_interpreter image options in
-  let start = interpreter#eval stmts in
-  Monad.State.exec start ctxt
-
-let init image options pc =
-  let stmts = Boot.clean_state in
-  base_init image options stmts pc
-
-let init_default image options pc =
-  let stmts = Boot.ready_state in
-  base_init image options stmts pc
-
 let render options ctxt =
   let open Lwt in
   match ctxt#lookup (Z80_env.mem) with

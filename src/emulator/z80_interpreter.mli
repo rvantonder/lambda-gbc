@@ -22,9 +22,8 @@ class context : Z80_image.t -> Options.t -> object('s)
     method save_addr : word -> 's
   end
 
-val init : Z80_image.t -> Options.t -> int -> context
-val init_default : Z80_image.t -> Options.t -> int -> context
-
+(** The only way to advance the interpreter should be through step_insn and
+    step_frame *)
 class ['a] z80_interpreter : Z80_image.t -> Options.t -> object('s)
     constraint 'a = #context
     inherit ['a] bili

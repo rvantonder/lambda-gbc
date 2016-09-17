@@ -1,21 +1,4 @@
-(** A Command received from input, and a Request issued to the z80
-    interpreter, which is handles *)
-module Request : sig
-  type printable = Regs
-                 | Insn [@@ deriving sexp, variants]
-
-  type steppable = Frame
-                 | Insn [@@ deriving sexp, variants]
-
-  type t = Pause
-         | Resume
-         | Help
-         | Bp of int
-         | Step of steppable
-         | Print of printable [@@deriving sexp, variants]
-
-  val pp : Format.formatter -> t -> unit
-end
+open Debugger_types
 
 (** Does the work of processing commands and updating state *)
 module Command_interpreter : sig

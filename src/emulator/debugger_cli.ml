@@ -2,24 +2,7 @@ open React
 open Core_kernel.Std
 open Sexplib
 
-(** A Request issued to the z80 interpreter, which is handles *)
-module Request = struct
-  type printable = Regs
-                 | Insn [@@ deriving sexp, variants]
-
-  type steppable = Frame
-                 | Insn [@@ deriving sexp, variants]
-
-  type t = Pause
-         | Resume
-         | Help
-         | Bp of int
-         | Step of steppable
-         | Print of printable [@@deriving sexp, variants]
-
-  (* TODO: needs to handle int/steppable types *)
-  let pp ppf rq = Format.fprintf ppf "%s" @@ Sexp.to_string @@ sexp_of_t rq
-end
+open Debugger_types
 
 (** A module for a daemon that interprets commands *)
 module Command_interpreter = struct
