@@ -43,13 +43,6 @@ module Z80_interpreter_loop = struct
   let draw_bg ctxt tiles =
     Background.from_tile_list tiles ctxt |> Background.render
 
-  let draw_gary ctxt =
-    let open Sprites in
-    let open Qsprite in
-    let gary = Sprites.gary ~offsetx:1 ~offsety:1 ctxt in
-    Qsprite.move gary 8 8;
-    Qsprite.render gary
-
   (** TODO: why if i raise exception here does it get ignored? *)
   let draw ui matrix tiles =
     let open LTerm_geom in
@@ -60,8 +53,7 @@ module Z80_interpreter_loop = struct
       (if size.rows < 289 || size.cols < 1430 then
        raise (Failure "I'm not going to continue drawing. Screen too small"));*)
     LTerm_draw.clear ctxt;
-    draw_bg ctxt tiles;
-    draw_gary ctxt
+    draw_bg ctxt tiles
 
   let storage_of_context ctxt =
     let open Option in
