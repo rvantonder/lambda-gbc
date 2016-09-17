@@ -1,10 +1,7 @@
 open Bap.Std
 open Bil.Result
 
-class context :
-  Z80_image.t ->
-  Options.t ->
-  object('s)
+class context : Z80_image.t -> Options.t -> object('s)
     inherit Bili.context
 
     method current_hunk : Z80_disassembler.Hunk.t
@@ -28,10 +25,7 @@ class context :
 val init : Z80_image.t -> Options.t -> int -> context
 val init_default : Z80_image.t -> Options.t -> int -> context
 
-class ['a] z80_interpreter :
-  Z80_image.t ->
-  Options.t ->
-  object('s)
+class ['a] z80_interpreter : Z80_image.t -> Options.t -> object('s)
     constraint 'a = #context
     inherit ['a] bili
 

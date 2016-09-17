@@ -324,6 +324,8 @@ class ['a] z80_interpreter image options = object(self)
 
   (** BILI base class methods *)
   (** 1. *)
+  method! eval stmts = super#eval stmts
+
   (** Advance should be called after each set of lifted statements
       corresponding to one hunk has been interpreted. Not when every move is
       interpreterd (eval_move), as I mistakenly did before.
@@ -338,8 +340,6 @@ class ['a] z80_interpreter image options = object(self)
       the run loop (so it can't be detected there. We must detect it
       here, and not advance pc in that case, it is already where it
       needs to be! *)
-  method! eval stmts = super#eval stmts
-
   method step_insn =
     get () >>= fun ctxt ->
     update (fun ctxt -> ctxt#decode) >>= fun () ->
