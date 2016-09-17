@@ -370,19 +370,20 @@ let print_ctxt ctxt options =
 
 (* TODO, I don't like how we create a new interpreter here and don't
    return it... shouldn't be needed... just return ctxt*)
-let base_init image options stmts =
+let base_init image options stmts pc =
   let ctxt = new context image options in
+  let ctxt = set_pc ctxt pc in
   let interpreter = new z80_interpreter image options in
   let start = interpreter#eval stmts in
   Monad.State.exec start ctxt
 
-let init image options =
+let init image options pc =
   let stmts = Boot.clean_state in
-  base_init image options stmts
+  base_init image options stmts pc
 
-let init_default image options =
+let init_default image options pc =
   let stmts = Boot.ready_state in
-  base_init image options stmts
+  base_init image options stmts pc
 
 let sync_if_needed ctxt bil_stmt =
   match bil_stmt with

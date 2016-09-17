@@ -143,7 +143,6 @@ module Z80_interpreter_loop = struct
 
     (** Create the interpreter *)
     let interpreter = new Z80_interpreter.z80_interpreter image options in
-    let ctxt = Z80_interpreter.set_pc ctxt 0 in
 
     let rec loop ui ctxt =
       let open Debugger.Request in
