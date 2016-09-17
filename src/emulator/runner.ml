@@ -13,10 +13,10 @@ module Input_loop = struct
 
   let run term history send_stream =
     (** Create initial debug state *)
-    let state = Debugger.Command_interpreter.create send_stream in
+    let state = Debugger_cli.Command_interpreter.create send_stream in
 
     let rec loop term history state =
-      let open Debugger.Repl in
+      let open Debugger_cli.Repl in
       Lwt.catch (fun () ->
           let rl = new read_line ~term
             ~history:(LTerm_history.contents history) ~state in
@@ -25,7 +25,7 @@ module Input_loop = struct
           | exn -> Lwt.fail exn) >>= function
       | Some command ->
         (* Parse and send the command *)
-        let state',out = Debugger.Command_interpreter.process history state command in
+        let state',out = Debugger_cli.Command_interpreter.process history state command in
         LTerm.fprintls term (make_output state' out) >>= fun () ->
         LTerm_history.add history command;
         loop term history state'
@@ -81,7 +81,7 @@ module Z80_interpreter_loop = struct
       interpreter. Otherwise, each unrecognized command issued will
       "skip" the frame for that cycle. *)
   let handle_request ctxt step_frame step_insn (rq,state) =
-    let open Debugger.Request in
+    let open Debugger_cli.Request in
     match rq,state with
     | Step Frame,_ ->
       Lwt_io.printf "[+] Event: %s\n%!"
@@ -115,7 +115,7 @@ module Z80_interpreter_loop = struct
 
   (** Blocking input loop when paused *)
   let blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn =
-    let open Debugger.Request in
+    let open Debugger_cli.Request in
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
     let rec loop_blocking_while_paused rq ctxt =
@@ -139,7 +139,7 @@ module Z80_interpreter_loop = struct
     let interp = new Z80_interpreter.z80_interpreter image options in
 
     let rec loop ui ctxt =
-      let open Debugger.Request in
+      let open Debugger_cli.Request in
       (** Render: Set tiles from memory *)
       update_tiles_from_mem options ctxt;
       LTerm_ui.draw ui;
