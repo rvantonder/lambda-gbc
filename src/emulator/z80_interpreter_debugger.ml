@@ -32,13 +32,11 @@ class ['a] z80_interpreter_debugger image options send_stream = object(self)
   constraint 'a = #context
   inherit ['a] Z80_interpreter.z80_interpreter image options as super
 
-(*
-  method! step_insn =
-    get () >>= fun ctxt ->
-    if (List.exists ctxt#breakpoints ~f:((=) ctxt#pc)) then
-      return ()
-    else
-      super#step_insn
-*)
+  (*  method! step_insn =
+      get () >>= fun ctxt ->
+      if (List.exists ctxt#breakpoints ~f:((=) ctxt#pc)) then
+        return ()
+      else
+        super#step_insn*)
 
 end

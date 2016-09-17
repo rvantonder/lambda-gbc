@@ -240,12 +240,15 @@ let start_event_loop refresh_rate_frame options image =
   let open Lwt in
   let open LTerm_key in
 
-  (* TODO: mailbox instead of stream? need only one *)
   let recv_stream, send_stream = Lwt_stream.create () in
 
   Lwt_io.printl "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
+
   (*check_small_screen ui;*) (* TODO turn on later *)
+
+  (* If debugging is enabled, pause NOW *)
+  send_stream (Some Debugger_types.Request.Pause);
 
   let interp_loop = set_up_debug_interp_loop refresh_rate_frame
       options image term recv_stream send_stream in
@@ -254,8 +257,7 @@ let start_event_loop refresh_rate_frame options image =
 
   Lwt.finalize
     (fun () -> Lwt.join
-        [interp_loop;
-         input_loop])
+        [interp_loop;input_loop])
     (fun () -> return ()) (* TODO: cleanup. somehow Lterm_ui.quit ui *)
 
 let run options image =
