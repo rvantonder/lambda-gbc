@@ -69,6 +69,11 @@ let sync reg =
 let set_pc ctxt (addr : int) =
   ctxt#with_pc (Bil.Imm (i16 addr))
 
+let sync_if_needed ctxt bil_stmt =
+  match bil_stmt with
+  | Bil.Move (v,_) -> Stmt.eval (sync v) ctxt
+  | _ -> ctxt
+
 let get_pc ctxt =
   match ctxt#pc with
   | Bil.Imm w -> Word.to_int w |> ok_exn
@@ -79,6 +84,19 @@ let add_pc ctxt (x : int) =
   match ctxt#pc with
   | Bil.Imm w -> ctxt#with_pc (Bil.Imm (Word.(w+(i16 x))))
   | _ -> ctxt
+
+(** Substitute pc with value *)
+let sub_pc ctxt stmts =
+  (object inherit Stmt.mapper
+    method! map_var v =
+      (*if CPU.pc = v then*) (* TODO *)
+      if Var.name v = "PC" then
+        match ctxt#pc with
+        | Bil.Imm pc -> Bil.int pc
+        | _ -> failwith "Cannot substitute pc, not a value"
+      else
+        Bil.var v
+  end)#run stmts
 
 class memory image options : Bil.storage = object(self : 's)
   val storage = Bitvector.Map.empty
@@ -237,17 +255,6 @@ class context image options = object(self : 's)
       printf "Current hunk %a\n" Hunk.pp hunk;
     {< current_hunk = hunk >}
 
-  (** Substitute pc with value *)
-  method sub_pc stmts =
-    (object inherit Stmt.mapper
-      method! map_var v =
-        if Var.name v = "PC" then
-          match self#pc with
-          | Bil.Imm pc -> Bil.int pc
-          | _ -> failwith "Cannot substitute pc, not a value"
-        else
-          Bil.var v
-    end)#run stmts
 
   method lift =
     let bil = Lifter.lift current_hunk.stmt in
@@ -273,6 +280,10 @@ open Monad.State
 class ['a] z80_interpreter image options = object(self)
   constraint 'a = #context
   inherit ['a] bili as super
+
+  val frame_steps = 69905
+
+  method private frame_steps = frame_steps
 
   method print_interpreted_stmts stmts =
     let aqua = "\x1b[46m" in
@@ -327,16 +338,36 @@ class ['a] z80_interpreter image options = object(self)
       the run loop (so it can't be detected there. We must detect it
       here, and not advance pc in that case, it is already where it
       needs to be! *)
-  method! eval stmts =
-    match stmts with
-    | [] -> super#eval stmts
-    | stmts ->
-      update (fun ctxt -> ctxt#advance) >>= fun _ ->
+  method! eval stmts = super#eval stmts
+
+  method step_insn =
+    get () >>= fun ctxt ->
+    update (fun ctxt -> ctxt#decode) >>= fun () ->
+    update (fun ctxt -> ctxt#lift) >>= fun () ->
+    get () >>= fun ctxt ->
+    match ctxt#get_current_bil with
+    | [] -> put ctxt#advance
+    | bil ->
+      update (fun ctxt -> ctxt#advance) >>= fun () ->
       get () >>= fun ctxt ->
-      let stmts = ctxt#sub_pc stmts in
-      if debug then
-        self#print_interpreted_stmts stmts;
-      super#eval stmts
+      sub_pc ctxt bil |>
+      self#eval >>= fun () ->
+      update (fun ctxt ->
+          List.fold ~init:ctxt bil ~f:(fun ctxt bil ->
+              sync_if_needed ctxt bil)) >>= fun () ->
+      update (fun ctxt -> ctxt#inc_k) >>= fun () ->
+      update (fun ctxt -> ctxt#inc_cpu_clock)
+
+  method step_frame =
+    let rec repeat count =
+      if count < self#frame_steps then
+        self#step_insn >>= fun () ->
+        get () >>= fun ctxt ->
+        let cycles = ctxt#current_hunk.cycles in
+        repeat cycles
+      else
+        return () in
+    repeat 0
 
   (** 8. *)
   (** Unhandled instructions will simply advance pc. Need to store
@@ -384,11 +415,6 @@ let init image options pc =
 let init_default image options pc =
   let stmts = Boot.ready_state in
   base_init image options stmts pc
-
-let sync_if_needed ctxt bil_stmt =
-  match bil_stmt with
-  | Bil.Move (v,_) -> Stmt.eval (sync v) ctxt
-  | _ -> ctxt
 
 let render options ctxt =
   let open Lwt in

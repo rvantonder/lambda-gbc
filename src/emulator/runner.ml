@@ -3,6 +3,8 @@ open Format
 open Options
 open Bap.Std
 
+module SM = Monad.State
+
 let ref_tiles = ref [] (* XXX get rid of it later *)
 
 module Input_loop = struct
@@ -134,7 +136,7 @@ module Z80_interpreter_loop = struct
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
     (** Create the interpreter *)
-    let interpreter = new Z80_interpreter.z80_interpreter image options in
+    let interp = new Z80_interpreter.z80_interpreter image options in
 
     let rec loop ui ctxt =
       let open Debugger.Request in
@@ -143,10 +145,11 @@ module Z80_interpreter_loop = struct
       LTerm_ui.draw ui;
 
       let step_frame ctxt =
-        Z80_interpreter.step_frame options interpreter ctxt image in
+        (*SM.exec interp#step_frame ctxt in*)
+        Z80_interpreter.step_frame options interp ctxt image in
 
       let step_insn ctxt =
-        Z80_interpreter.step_insn options interpreter ctxt image in
+        Z80_interpreter.step_insn options interp ctxt image in
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
