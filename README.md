@@ -117,6 +117,10 @@ running `./driver.native --bootrom --speed 1.0 `
 
 Debugger commands: (print insn), (print regs), pause, resume, help, (bp 0x3)
 
+
+a FRAME step is a RENDERING optimization. if we do `./driver.native --botrom --speed 0.0`, things
+will work, but we don't want to render every time.
+
 previous 
 running `./driver.native --bootrom --speed 1.0` and testing debugger.
 is good for frames, to make it go fast, with the clock speed sync. But the sync
