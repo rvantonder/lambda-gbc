@@ -113,13 +113,18 @@ BUT! can i create a sleep/resume pair and then send the thread to the frame_loop
 
 # Left off:
 
-running `./driver.native --bootrom --speed 1.0 `
+running `./driver.native --bootrom --speed 0.0 `
 
 Debugger commands: (print insn), (print regs), pause, resume, help, (bp 0x3)
 
 
 a FRAME step is a RENDERING optimization. if we do `./driver.native --botrom --speed 0.0`, things
 will work, but we don't want to render every time.
+
+
+Hack for now: render every 10k steps. For some reason the boot rom is only about 47k steps,
+so the 69k steps isn't getting hit. we will sync this up with the step_frame once
+the gpu works correctly.
 
 previous 
 running `./driver.native --bootrom --speed 1.0` and testing debugger.
