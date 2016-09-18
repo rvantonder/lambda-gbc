@@ -161,8 +161,9 @@ module Z80_interpreter_loop = struct
          blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn
        | [rq] -> handle_request ctxt step_frame step_insn (rq,`Non_blocking)
        | _ ->
-         (** If empty, steps a frame by default, next ctxt *)
-         step_frame ctxt |> return)
+         (** Used to be step_frame, but i'm debugging *)
+         (** If empty, steps an insn by default, next ctxt *)
+         step_insn ctxt |> return)
       >>= fun ctxt' ->
 
       (** Sleep *)

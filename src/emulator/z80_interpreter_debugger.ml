@@ -41,8 +41,8 @@ class ['a] z80_interpreter_debugger image options send_stream = object(self)
       | _ -> failwith "PC undefined" in
     (*printf "\nPC is 0x%x\n%!" pc;*)
     if List.exists ctxt#breakpoints ~f:((=) pc) then
-      ((*printf "BP triggered!\n%!";*)
-        send_stream (Some Request.Pause));
+      (printf "BP triggered!\n%!";
+       send_stream (Some Request.Pause));
     return ()
 
   (*  method! step_insn =
