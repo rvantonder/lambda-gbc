@@ -115,4 +115,27 @@ BUT! can i create a sleep/resume pair and then send the thread to the frame_loop
 
 running `./driver.native --bootrom --speed 1.0 ` and testing debugger.
 
-Debugger commands: (print insn), (print regs), pause, resume, helpde
+Debugger commands: (print insn), (print regs), pause, resume, help, (bp 0x3)
+
+
+
+Some things:
+
+'current hunk' is the one behind the one just executed by pc. there's some mismatch
+when i print the current instruction, versus regs. stupid.
+
+normal interpreter doesn't type check yet, because we are explicitly calling breakpoint functionality.
+this should be separated properly eventually.
+
+by default, the interpreter continues with `next_insn` and not `next_frame`, because with
+`next_frame`, on resume, the bp gets skipped (even though, in the ideal implementation, it shouldn't)
+
+In other words, this should work, but doesnt:
+
+```
+(bp 0x4)
+(step frame)
+-> BP triggered!, entering blocking mode (already in blocking mode)
+```
+
+Instead it just continues
