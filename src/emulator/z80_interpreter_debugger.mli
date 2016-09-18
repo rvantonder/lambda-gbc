@@ -9,6 +9,7 @@ class context :
     inherit Z80_interpreter.context
 
     method add_breakpoint : breakpoint -> 's
+    method breakpoints : breakpoint list
     method remove_breakpoint : breakpoint -> 's
     method print_breakpoints : unit
   end
@@ -22,5 +23,4 @@ class ['a] z80_interpreter_debugger :
   object('s)
     constraint 'a = #context
     inherit ['a] Z80_interpreter.z80_interpreter
-
   end

@@ -99,6 +99,9 @@ module Z80_interpreter_loop = struct
       Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
       Format.printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
       ctxt
+    | Bp addr,_ ->
+      Lwt_io.printf "[+] Event: place BP 0x%x\n%!" addr >|= fun () ->
+      ctxt#add_breakpoint addr
     | Help,_ ->
       Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
       let pp rq_variant =
@@ -124,7 +127,7 @@ module Z80_interpreter_loop = struct
         (* On resume, step_frame or step_insn? step_insn slow for
            'real time'. so that's why i chose step_frame.*)
         Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
-        step_frame ctxt
+        step_insn ctxt
       | _ ->
         handle_request ctxt step_frame step_insn (rq,`Blocking) >>= fun ctxt ->
         Lwt_stream.next recv_stream >>= fun rq ->
@@ -188,26 +191,28 @@ let set_up_base_interp_loop
 
 let i16 = Word.of_int ~width:16
 
-let set_up_interp_loop
+(* TODO: make sure the command thing is only enabled for debugger 'view'. This doesn't type check otherwise
+   let set_up_interp_loop
     refresh_rate_frame
     options ctxt
     image term recv_stream =
 
-  let interp =
+   let interp =
     new Z80_interpreter.z80_interpreter image options in
 
-  let stmts =
+   let stmts =
     if options.bootrom then Boot.clean_state
     else Boot.ready_state in
 
-  let ctxt = new Z80_interpreter.context image options in
-  let ctxt = ctxt#with_pc (Bil.Imm (i16 0)) in
-  let start = interp#eval stmts in
+   let ctxt = new Z80_interpreter.context image options in
+   let ctxt = ctxt#with_pc (Bil.Imm (i16 0)) in
+   let start = interp#eval stmts in
 
-  let ctxt = Monad.State.exec start ctxt in
+   let ctxt = Monad.State.exec start ctxt in
 
-  set_up_base_interp_loop
+   set_up_base_interp_loop
     interp ctxt refresh_rate_frame options image term recv_stream
+*)
 
 (** The difference between the normal interpreter and debug interpreter is that
     we give the debug interpreter the send_event_stream. The same send

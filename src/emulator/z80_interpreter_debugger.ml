@@ -12,7 +12,7 @@ class context image options = object (self)
 
   val breakpoints : breakpoint list = []
 
-  method private breakpoints = breakpoints
+  method breakpoints = breakpoints
 
   method add_breakpoint bp = {< breakpoints = bp::breakpoints >}
 
@@ -31,6 +31,19 @@ type send_event_stream = (Request.t option -> unit)
 class ['a] z80_interpreter_debugger image options send_stream = object(self)
   constraint 'a = #context
   inherit ['a] Z80_interpreter.z80_interpreter image options as super
+
+  method! eval stmts =
+    (*printf "EVALING\n%!";*)
+    super#eval stmts >>= fun () ->
+    get () >>= fun ctxt ->
+    let pc = match ctxt#pc with
+      | Bil.Imm w -> Word.to_int w |> ok_exn
+      | _ -> failwith "PC undefined" in
+    (*printf "\nPC is 0x%x\n%!" pc;*)
+    if List.exists ctxt#breakpoints ~f:((=) pc) then
+      ((*printf "BP triggered!\n%!";*)
+        send_stream (Some Request.Pause));
+    return ()
 
   (*  method! step_insn =
       get () >>= fun ctxt ->
