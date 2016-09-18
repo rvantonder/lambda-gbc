@@ -147,10 +147,12 @@ module Z80_interpreter_loop = struct
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
-    let rec loop ui ctxt =
+    let rec loop ui ctxt count =
       let open Debugger_types.Request in
       (** Render: Set tiles from memory *)
-      update_tiles_from_mem options ctxt;
+      (* Hack: only render ever 10k steps *)
+      if count mod 10000 = 0 then
+        update_tiles_from_mem options ctxt;
       LTerm_ui.draw ui;
 
 
@@ -168,9 +170,9 @@ module Z80_interpreter_loop = struct
 
       (** Sleep *)
       Lwt_unix.sleep refresh_rate_frame >>= fun _ ->
-      loop ui ctxt' in
+      loop ui ctxt' (count + 1) in
 
-    loop ui ctxt
+    loop ui ctxt 0
 end
 
 let set_up_input_loop term send_stream =
