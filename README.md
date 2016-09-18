@@ -113,10 +113,14 @@ BUT! can i create a sleep/resume pair and then send the thread to the frame_loop
 
 # Left off:
 
-running `./driver.native --bootrom --speed 1.0 ` and testing debugger.
+running `./driver.native --bootrom --speed 1.0 `
 
 Debugger commands: (print insn), (print regs), pause, resume, help, (bp 0x3)
 
+previous 
+running `./driver.native --bootrom --speed 1.0` and testing debugger.
+is good for frames, to make it go fast, with the clock speed sync. But the sync
+part is independent of debugger correctness. so don't use next_frame while debugging.
 
 
 Some things:
@@ -138,4 +142,12 @@ In other words, this should work, but doesnt:
 -> BP triggered!, entering blocking mode (already in blocking mode)
 ```
 
-Instead it just continues
+Instead it just continues.
+
+
+Whenever (step frame) is called we will batch-process an entire frame before
+listening to any event again. That's why. Even though the bp triggered event is sent,
+we are not aborting step frame because it was triggered. correct behavior would do this.
+
+To get this, we would need to listen for evnts after each insn step inside a frame. Not going
+to bother. frames are there so we can execute big pieces with a given syncrhony. only.
