@@ -109,8 +109,9 @@ class memory image options : Bil.storage = object(self : 's)
     match Z80_image.get_bytes image ~position ~size:1 with
     | [| |] ->
       (match position with
-       | 0xff44 -> Some (i8 0x90) (* XXX Hard-code LY to pass scanline
-                                     wait check. 0x90 = 144, the last row *)
+       (* XXX Hard-code LY to pass scanline wait check.
+          0x90 = 144, the last row *)
+       | 0xFF44 -> Some (i8 0x90)
        | _ -> None)
     | [|v|] ->
       Some (i8 (UInt8.to_int v))

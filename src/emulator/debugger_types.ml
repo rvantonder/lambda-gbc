@@ -14,6 +14,7 @@ module Request = struct
   type t = Pause
          | Resume
          | Help
+         | Render
          | Bp of breakpoint
          | Step of steppable
          | Print of printable [@@deriving sexp, variants]

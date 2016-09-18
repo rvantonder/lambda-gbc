@@ -40,6 +40,7 @@ class ['a] z80_interpreter_debugger image options send_stream = object(self)
       | Bil.Imm w -> Word.to_int w |> ok_exn
       | _ -> failwith "PC undefined" in
     (*printf "\nPC is 0x%x\n%!" pc;*)
+    (* = : precies. *)
     if List.exists ctxt#breakpoints ~f:((=) pc) then
       (printf "BP triggered!\n%!";
        send_stream (Some Request.Pause));

@@ -80,7 +80,7 @@ module Z80_interpreter_loop = struct
       2) When non-blocking, an unrecognized request should simply step the
       interpreter. Otherwise, each unrecognized command issued will
       "skip" the frame for that cycle. *)
-  let handle_request ctxt step_frame step_insn (rq,state) =
+  let handle_request ctxt step_frame step_insn rrender (rq,state) =
     let open Debugger_types.Request in
     match rq,state with
     | Step Frame,_ ->
@@ -108,7 +108,18 @@ module Z80_interpreter_loop = struct
         let rq = rq_variant.Variantslib.Variant.name in
         printf "%s@." rq in
       (* (print insn) *)
-      Variants.iter ~pause:pp ~resume:pp ~bp:pp ~step:pp ~print:pp ~help:pp;
+      Variants.iter
+        ~pause:pp
+        ~resume:pp
+        ~bp:pp
+        ~step:pp
+        ~print:pp
+        ~help:pp
+        ~render:pp;
+      ctxt
+    | Render,_ ->
+      Lwt_io.printf "[+] Event: Force render\n%!" >|= fun () ->
+      rrender ctxt;
       ctxt
     | _,`Blocking -> return ctxt (* Any other command in the blocking
                                     state is ctxt *)
@@ -117,7 +128,8 @@ module Z80_interpreter_loop = struct
                                                      state is step_frame (why?)*)
 
   (** Blocking input loop when paused *)
-  let blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn =
+  let blocking_input_loop_on_pause
+      recv_stream ctxt step_frame step_insn rrender =
     let open Debugger_types.Request in
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
@@ -129,7 +141,7 @@ module Z80_interpreter_loop = struct
         Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
         step_insn ctxt
       | _ ->
-        handle_request ctxt step_frame step_insn (rq,`Blocking) >>= fun ctxt ->
+        handle_request ctxt step_frame step_insn rrender (rq,`Blocking) >>= fun ctxt ->
         Lwt_stream.next recv_stream >>= fun rq ->
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
@@ -147,12 +159,14 @@ module Z80_interpreter_loop = struct
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
+    let rrender ctxt = update_tiles_from_mem options ctxt in
+
     let rec loop ui ctxt count =
       let open Debugger_types.Request in
       (** Render: Set tiles from memory *)
       (* Hack: only render ever 10k steps *)
       if count mod 10000 = 0 then
-        update_tiles_from_mem options ctxt;
+        rrender ctxt;
       LTerm_ui.draw ui;
 
 
@@ -160,8 +174,8 @@ module Z80_interpreter_loop = struct
       (match Lwt_stream.get_available recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
-         blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn
-       | [rq] -> handle_request ctxt step_frame step_insn (rq,`Non_blocking)
+         blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn rrender
+       | [rq] -> handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
        | _ ->
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)

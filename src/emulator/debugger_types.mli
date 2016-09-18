@@ -10,6 +10,7 @@ module Request : sig
   type t = Pause
          | Resume
          | Help
+         | Render
          | Bp of int
          | Step of steppable
          | Print of printable [@@deriving sexp, variants]

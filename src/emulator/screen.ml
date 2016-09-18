@@ -211,6 +211,17 @@ let get_tiles options storage =
   (*print_ascii_screen tiles';*)
   return tiles'
 
+(**
+   FF40 - LCDC - LCD Control (R/W)
+   Bit 7 - LCD Display Enable             (0=Off, 1=On)
+   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
+   Bit 5 - Window Display Enable          (0=Off, 1=On)
+   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
+   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
+   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
+   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
+   Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
+*)
 let get_tiles' options storage =
   match storage with
   | Some storage ->
@@ -219,14 +230,14 @@ let get_tiles' options storage =
     let map_display_select =
       match lcdc with
       | Some w -> printf "LCDC: %a\n" Word.pp w;
-        let mask = Word.of_int ~width:8 0x8 in
+        let mask = Word.of_int ~width:8 0x8 in (* Bit 3: 00001000 *)
         if Word.(w land mask = (zero 8)) then "vram-tile-map-0"
         else "vram-tile-map-1"
       | None -> printf "Can't render here: no LCDC"; "vram-tile-map-0" in (* WARN *)
     let data_display_select =
       match lcdc with
       | Some w -> printf "LCDC: %a\n" Word.pp w;
-        let mask = Word.of_int ~width:8 0x10 in
+        let mask = Word.of_int ~width:8 0x10 in (* Bit 4: 00010000 *)
         if Word.(w land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
         else "vram-tile-set-1" (* 0 - 255 *)
       | None -> printf "Can't render here: no LCDC"; "vram-tile-set-0" (* WARN *)
