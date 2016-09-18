@@ -115,6 +115,28 @@ BUT! can i create a sleep/resume pair and then send the thread to the frame_loop
 
 running `./driver.native --bootrom --speed 0.0 `
 
+
+
+no$gb, the screen scrolly is updated at 0x86, 0x89. Now, if only my
+debugger actually worked and breakpointed at those points properly.
+
+Debug: (bp 0x86). Why doesn't it behave like no$gb?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Debugger commands: (print insn), (print regs), pause, resume, help, (bp 0x3)
 
 
