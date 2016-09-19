@@ -3,6 +3,12 @@ open Format
 open Options
 open Bap.Std
 
+(** Log layers:
+    ev_dbg_rq_recv : a request is received by the debugger loop, which it must process
+    ev_cli_rq_snd  : a request is issued from the cli
+    ev_int_rq_snd  : a request is issued from the debug interpreter (e.g. bp)
+*)
+
 module SM = Monad.State
 
 let ref_tiles = ref [] (* XXX get rid of it later *)
@@ -174,8 +180,14 @@ module Z80_interpreter_loop = struct
       (match Lwt_stream.get_available recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
+         let section = Lwt_log.Section.make "ev_dbg_rq_recv" in
+         Lwt_log.debug ~section "Pause" >>= fun () ->
          blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn rrender
-       | [rq] -> handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
+       | [rq] ->
+         let section = Lwt_log.Section.make "ev_dbg_rq_recv" in
+         Lwt_log.debug_f ~section
+           "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
+         handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
        | _ ->
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
@@ -210,16 +222,16 @@ let i16 = Word.of_int ~width:16
 
 (* TODO: make sure the command thing is only enabled for debugger 'view'. This doesn't type check otherwise
    let set_up_interp_loop
-    refresh_rate_frame
-    options ctxt
-    image term recv_stream =
+   refresh_rate_frame
+   options ctxt
+   image term recv_stream =
 
    let interp =
-    new Z80_interpreter.z80_interpreter image options in
+   new Z80_interpreter.z80_interpreter image options in
 
    let stmts =
-    if options.bootrom then Boot.clean_state
-    else Boot.ready_state in
+   if options.bootrom then Boot.clean_state
+   else Boot.ready_state in
 
    let ctxt = new Z80_interpreter.context image options in
    let ctxt = ctxt#with_pc (Bil.Imm (i16 0)) in
@@ -228,7 +240,7 @@ let i16 = Word.of_int ~width:16
    let ctxt = Monad.State.exec start ctxt in
 
    set_up_base_interp_loop
-    interp ctxt refresh_rate_frame options image term recv_stream
+   interp ctxt refresh_rate_frame options image term recv_stream
 *)
 
 (** The difference between the normal interpreter and debug interpreter is that
@@ -262,9 +274,15 @@ let start_event_loop refresh_rate_frame options image =
   let open Lwt in
   let open LTerm_key in
 
+  Lwt_log.file ~file_name:"lgbc.log" ~mode:`Truncate () >>= fun logger ->
+  (** All interpreter debugger request events under "ev_*" section
+      are logged to Debug level. *)
+  Lwt_log_core.add_rule "ev_*" Lwt_log_core.Debug;
+  Lwt_log.default := logger;
+
   let recv_stream, send_stream = Lwt_stream.create () in
 
-  Lwt_io.printl "Starting event_loop" >>= fun () ->
+  Lwt_log.debug "Starting event_loop" >>= fun () ->
   Lazy.force LTerm.stdout >>= fun term ->
 
   (*check_small_screen ui;*) (* TODO turn on later *)
@@ -277,6 +295,7 @@ let start_event_loop refresh_rate_frame options image =
 
   let input_loop = set_up_input_loop term send_stream in
 
+  (*Lwt_log.ign_debug "Spinning up event loops...";*)
   Lwt.finalize
     (fun () -> Lwt.join
         [interp_loop;input_loop])

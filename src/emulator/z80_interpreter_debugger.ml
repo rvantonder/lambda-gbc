@@ -42,7 +42,8 @@ class ['a] z80_interpreter_debugger image options send_stream = object(self)
     (*printf "\nPC is 0x%x\n%!" pc;*)
     (* = : precies. *)
     if List.exists ctxt#breakpoints ~f:((=) pc) then
-      (printf "BP triggered!\n%!";
+      (printf "BP triggered! PC value is 0x%x\n%!" pc;
+       ctxt#print_cpu;
        send_stream (Some Request.Pause));
     return ()
 

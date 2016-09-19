@@ -182,3 +182,16 @@ we are not aborting step frame because it was triggered. correct behavior would 
 
 To get this, we would need to listen for evnts after each insn step inside a frame. Not going
 to bother. frames are there so we can execute big pieces with a given syncrhony. only.
+
+
+
+Only logging under section "ev_*" will be printed, and those that map to debug.
+"ev_* -> debug"
+
+LWT_LOG="ev_* -> debug" ./driver.native --bootrom --speed 0.0 
+
+All debug messages:
+
+LWT_LOG="debug" ./driver.native --bootrom --speed 0.0 
+same as
+LWT_LOG="* -> debug" ./driver.native --bootrom --speed 0.0 

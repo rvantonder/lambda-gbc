@@ -4,6 +4,7 @@ open Lazy
 open Format
 open Bap.Std
 open Options
+open Lwt_log
 
 open Util
 
@@ -114,4 +115,4 @@ let () =
   disassemble_linear image options;
   if options.v then
     printf "Initializing interpreter...\n";
-  Runner.run options image |> ignore
+  Runner.run options image |> ignore;

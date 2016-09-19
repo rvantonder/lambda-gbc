@@ -21,4 +21,6 @@ module Request = struct
 
   (* TODO: needs to handle int/steppable types *)
   let pp ppf rq = Format.fprintf ppf "%s" @@ Sexp.to_string @@ sexp_of_t rq
+
+  let to_string rq = Sexp.to_string @@ sexp_of_t rq
 end

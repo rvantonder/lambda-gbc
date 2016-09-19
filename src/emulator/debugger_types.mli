@@ -16,4 +16,5 @@ module Request : sig
          | Print of printable [@@deriving sexp, variants]
 
   val pp : Format.formatter -> t -> unit
+  val to_string : t -> string
 end

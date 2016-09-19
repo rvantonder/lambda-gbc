@@ -1,4 +1,4 @@
-PKG core_kernel lwt lambda-term ctypes ctypes-foreign bap cmdliner
+PKG core_kernel lwt lambda-term ctypes ctypes-foreign bap cmdliner lwt.log
 
 EXT nonrec
 
