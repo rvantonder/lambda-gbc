@@ -121,17 +121,22 @@ module Z80_interpreter_loop = struct
   (** Blocking input loop when paused *)
   let blocking_input_loop_on_pause
       recv_stream ctxt step_frame step_insn rrender =
+    let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_blking" in
     let open Debugger_types.Request in
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
+    Lwt_log.debug ~section "Paused. Blocking input mode on!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
     let rec loop_blocking_while_paused rq ctxt =
       match rq with
       | Resume ->
         (* On resume, step_frame or step_insn? step_insn slow for
            'real time'. so that's why i chose step_frame.*)
-        Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
+        Lwt_log.debug ~section "Resume" >|= fun () ->
+        (*Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->*)
         step_insn ctxt
-      | _ ->
+      | rq ->
+        Lwt_log.debug_f ~section
+          "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
         handle_request ctxt step_frame step_insn rrender (rq,`Blocking) >>= fun ctxt ->
         Lwt_stream.next recv_stream >>= fun rq ->
         loop_blocking_while_paused rq ctxt in
@@ -147,7 +152,7 @@ module Z80_interpreter_loop = struct
       image
       term
       recv_stream =
-    let section = Lwt_log.Section.make "ev_dbg_rq_rcv" in
+    let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_non_blking" in
 
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
@@ -173,11 +178,15 @@ module Z80_interpreter_loop = struct
          Lwt_log.debug_f ~section
            "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
          handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
-       | _ ->
+       | [] ->
+         (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
-         step_insn ctxt |> return)
-      >>= fun ctxt' ->
+         step_insn ctxt |> return
+       | _ ->
+         (*Lwt_log.debug ~section "BADBADBAD" >>= fun () -> return ctxt*)
+         failwith "Bad: more than one rq in queue"
+      ) >>= fun ctxt' ->
 
       (** Sleep *)
       Lwt_unix.sleep refresh_rate_frame >>= fun _ ->
