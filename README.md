@@ -123,6 +123,13 @@ debugger actually worked and breakpointed at those points properly.
 Debug: (bp 0x86). Why doesn't it behave like no$gb?
 
 
+Minimal example bug:
+
+(bp 0x7)
+resume
+-> ok at this point
+resume -> fuck
+
 
 
 
@@ -195,3 +202,5 @@ All debug messages:
 LWT_LOG="debug" ./driver.native --bootrom --speed 0.0 
 same as
 LWT_LOG="* -> debug" ./driver.native --bootrom --speed 0.0 
+
+
