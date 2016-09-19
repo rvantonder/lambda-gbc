@@ -113,8 +113,8 @@ BUT! can i create a sleep/resume pair and then send the thread to the frame_loop
 
 # Left off:
 
-running `./driver.native --bootrom --speed 0.0 `
 
+LWT_LOG="debug" ./driver.native --bootrom --speed 0.0 
 
 
 no$gb, the screen scrolly is updated at 0x86, 0x89. Now, if only my
@@ -203,4 +203,28 @@ LWT_LOG="debug" ./driver.native --bootrom --speed 0.0
 same as
 LWT_LOG="* -> debug" ./driver.native --bootrom --speed 0.0 
 
+
+
+
+## The bug
+
+
+Bil can be nested:
+
+```
+Sep 18 22:14:43: ev_int_dbg_eval: {
+Sep 18 22:14:43: ev_int_dbg_eval:   if (~FZ) {
+Sep 18 22:14:43: ev_int_dbg_eval:     jmp (0xC:16 + (extend:16[0xFB:8]))
+Sep 18 22:14:43: ev_int_dbg_eval:   }
+Sep 18 22:14:43: ev_int_dbg_eval: }
+```
+
+interpreter #eval is called recursively on structures like the above. First evaluates if, then jmp. So, when 
+we have something that sends events like 'pause', it may send it multiple times before returning.
+
+this could be fixd by putting it in 'step_insn', which is at least atomic.
+
+But the bigger issue is, should we be using mailbox already, or the queue for lwt?
+
+because the second part of this bug is that two events are added, and then we enter infniloop
 

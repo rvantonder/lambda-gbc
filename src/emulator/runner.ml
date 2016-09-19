@@ -89,6 +89,10 @@ module Z80_interpreter_loop = struct
   let handle_request ctxt step_frame step_insn rrender (rq,state) =
     let open Debugger_types.Request in
     let section = Lwt_log.Section.make "ev_dbg_rq_rcv" in
+    (match state with
+     | `Blocking -> Lwt_log.ign_debug ~section "handle rq BLOCKING"
+     | `Non_blocking -> Lwt_log.ign_debug ~section "handle rq NON-BLOCKING");
+
     Lwt_log.ign_debug_f ~section "Event %s" @@ Sexp.to_string (sexp_of_t rq);
     let ctxt' =
       match rq,state with
@@ -121,8 +125,11 @@ module Z80_interpreter_loop = struct
   (** Blocking input loop when paused *)
   let blocking_input_loop_on_pause
       recv_stream ctxt step_frame step_insn rrender =
-    let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_blking" in
     let open Debugger_types.Request in
+
+    let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_blking" in
+    Lwt_log.debug ~section "MODE ACTIVE: BLOCKING" >>= fun () ->
+
     Lwt_io.printf "Paused. Blocking input mode on!\n%!" >>= fun () ->
     Lwt_log.debug ~section "Paused. Blocking input mode on!" >>= fun () ->
     Lwt_stream.next recv_stream >>= fun rq ->
@@ -131,9 +138,10 @@ module Z80_interpreter_loop = struct
       | Resume ->
         (* On resume, step_frame or step_insn? step_insn slow for
            'real time'. so that's why i chose step_frame.*)
-        Lwt_log.debug ~section "Resume" >|= fun () ->
-        (*Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->*)
-        step_insn ctxt
+        Lwt_log.debug ~section "Resume" >>= fun () ->
+        Lwt_io.printf "[+] Event: RESUME on block\n%!" >|= fun () ->
+        (** I don't think we should step here. just return ctxt *)
+        ctxt
       | rq ->
         Lwt_log.debug_f ~section
           "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
@@ -161,12 +169,13 @@ module Z80_interpreter_loop = struct
 
     let rec loop ui ctxt count =
       let open Debugger_types.Request in
+      Lwt_log.debug ~section "MODE ACTIVE: NON-BLOCKING" >>= fun () ->
+
       (** Render: Set tiles from memory *)
       (* Hack: only render ever 10k steps *)
       if count mod 10000 = 0 then
         rrender ctxt;
       LTerm_ui.draw ui;
-
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
@@ -179,12 +188,13 @@ module Z80_interpreter_loop = struct
            "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
          handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
        | [] ->
+         Lwt_log.debug ~section:Lwt_log.Section.main "step" >>= fun () ->
          (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
          step_insn ctxt |> return
        | _ ->
-         (*Lwt_log.debug ~section "BADBADBAD" >>= fun () -> return ctxt*)
+         Lwt_log.ign_fatal ~section "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"
       ) >>= fun ctxt' ->
 
