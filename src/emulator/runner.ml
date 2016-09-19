@@ -4,7 +4,7 @@ open Options
 open Bap.Std
 
 (** Log layers:
-    ev_dbg_rq_recv : a request is received by the debugger loop, which it must process
+    ev_dbg_rq_rcv : a request is received by the debugger loop, which it must process
     ev_cli_rq_snd  : a request is issued from the cli
     ev_int_rq_snd  : a request is issued from the debug interpreter (e.g. bp)
 *)
@@ -88,50 +88,35 @@ module Z80_interpreter_loop = struct
       "skip" the frame for that cycle. *)
   let handle_request ctxt step_frame step_insn rrender (rq,state) =
     let open Debugger_types.Request in
-    match rq,state with
-    | Step Frame,_ ->
-      Lwt_io.printf "[+] Event: %s\n%!"
-      @@ Sexp.to_string (sexp_of_t (Step Frame)) >|= fun () ->
-      step_frame ctxt
-    | Step Insn,_ ->
-      Lwt_io.printf "[+] Event: %s\n%!"
-      @@ Sexp.to_string (sexp_of_t (Step Insn)) >|= fun () ->
-      step_insn ctxt
-    | Print Regs,_ ->
-      Lwt_io.printf "[+] Event: (print regs)\n%!" >|= fun () ->
-      ctxt#print_cpu;
-      ctxt
-    | Print Insn,_ ->
-      Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
-      Format.printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
-      ctxt
-    | Bp addr,_ ->
-      Lwt_io.printf "[+] Event: place BP 0x%x\n%!" addr >|= fun () ->
-      ctxt#add_breakpoint addr
-    | Help,_ ->
-      Lwt_io.printf "[+] Event: (print insn)\n%!" >|= fun () ->
-      let pp rq_variant =
-        let rq = rq_variant.Variantslib.Variant.name in
-        printf "%s@." rq in
-      (* (print insn) *)
-      Variants.iter
-        ~pause:pp
-        ~resume:pp
-        ~bp:pp
-        ~step:pp
-        ~print:pp
-        ~help:pp
-        ~render:pp;
-      ctxt
-    | Render,_ ->
-      Lwt_io.printf "[+] Event: Force render\n%!" >|= fun () ->
-      rrender ctxt;
-      ctxt
-    | _,`Blocking -> return ctxt (* Any other command in the blocking
-                                    state is ctxt *)
-    | _,`Non_blocking -> return (step_frame ctxt) (* Any other command
-                                                     in the non-blocking
-                                                     state is step_frame (why?)*)
+    let section = Lwt_log.Section.make "ev_dbg_rq_rcv" in
+    Lwt_log.ign_debug_f ~section "Event %s" @@ Sexp.to_string (sexp_of_t rq);
+    let ctxt' =
+      match rq,state with
+      | Step Frame,_ -> step_frame ctxt
+      | Step Insn,_ -> step_insn ctxt
+      | Print Regs,_ ->
+        ctxt#print_cpu;
+        ctxt
+      | Print Insn,_ ->
+        Format.printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
+        ctxt
+      | Bp addr,_ ->
+        ctxt#add_breakpoint addr
+      | Help,_ ->
+        let pp rq_variant =
+          let rq = rq_variant.Variantslib.Variant.name in
+          printf "%s@." rq in
+        Variants.iter ~pause:pp ~resume:pp ~bp:pp ~step:pp ~print:pp ~help:pp
+          ~render:pp;
+        ctxt
+      | Render,_ ->
+        rrender ctxt;
+        ctxt
+      (** Any other command in the blocking state is ctxt *)
+      | _,`Blocking -> ctxt
+      (** Any other command in the non-blocking state is step_frame (why?)*)
+      | _,`Non_blocking -> (step_frame ctxt) in
+    return ctxt'
 
   (** Blocking input loop when paused *)
   let blocking_input_loop_on_pause
@@ -162,6 +147,8 @@ module Z80_interpreter_loop = struct
       image
       term
       recv_stream =
+    let section = Lwt_log.Section.make "ev_dbg_rq_rcv" in
+
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
 
@@ -180,11 +167,9 @@ module Z80_interpreter_loop = struct
       (match Lwt_stream.get_available recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
-         let section = Lwt_log.Section.make "ev_dbg_rq_recv" in
          Lwt_log.debug ~section "Pause" >>= fun () ->
          blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn rrender
        | [rq] ->
-         let section = Lwt_log.Section.make "ev_dbg_rq_recv" in
          Lwt_log.debug_f ~section
            "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
          handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)

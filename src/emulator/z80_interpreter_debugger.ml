@@ -14,7 +14,10 @@ class context image options = object (self)
 
   method breakpoints = breakpoints
 
-  method add_breakpoint bp = {< breakpoints = bp::breakpoints >}
+  method add_breakpoint bp =
+    let section_bp = Lwt_log.Section.make "ev_int_add_bp" in
+    Lwt_log.ign_debug_f ~section:section_bp "BP add: 0x%x" bp;
+    {< breakpoints = bp::breakpoints >}
 
   method remove_breakpoint bp =
     let breakpoints' = List.filter breakpoints ~f:((=) bp) in
@@ -28,30 +31,31 @@ end
 
 type send_event_stream = (Request.t option -> unit)
 
-class ['a] z80_interpreter_debugger image options send_stream = object(self)
-  constraint 'a = #context
-  inherit ['a] Z80_interpreter.z80_interpreter image options as super
+class ['a] z80_interpreter_debugger image options send_stream =
+  let section_rq_snd = Lwt_log.Section.make "ev_int_rq_snd" in
+  let section_bp =     Lwt_log.Section.make "ev_int_bp_trigger" in
+  object(self)
+    constraint 'a = #context
+    inherit ['a] Z80_interpreter.z80_interpreter image options as super
 
-  method! eval stmts =
-    (*printf "EVALING\n%!";*)
-    super#eval stmts >>= fun () ->
-    get () >>= fun ctxt ->
-    let pc = match ctxt#pc with
-      | Bil.Imm w -> Word.to_int w |> ok_exn
-      | _ -> failwith "PC undefined" in
-    (*printf "\nPC is 0x%x\n%!" pc;*)
-    (* = : precies. *)
-    if List.exists ctxt#breakpoints ~f:((=) pc) then
-      (printf "BP triggered! PC value is 0x%x\n%!" pc;
-       ctxt#print_cpu;
-       send_stream (Some Request.Pause));
-    return ()
-
-  (*  method! step_insn =
+    method! eval stmts =
+      (*printf "EVALING\n%!";*)
+      super#eval stmts >>= fun () ->
       get () >>= fun ctxt ->
-      if (List.exists ctxt#breakpoints ~f:((=) ctxt#pc)) then
-        return ()
-      else
-        super#step_insn*)
+      let pc = match ctxt#pc with
+        | Bil.Imm w -> Word.to_int w |> ok_exn
+        | _ -> failwith "PC undefined" in
+      if List.exists ctxt#breakpoints ~f:((=) pc) then
+        (Lwt_log.ign_debug_f ~section:section_bp "BP hit: 0x%x" pc;
+         Lwt_log.ign_debug ~section:section_rq_snd "Pause";
+         send_stream (Some Request.Pause));
+      return ()
 
-end
+    (*  method! step_insn =
+        get () >>= fun ctxt ->
+        if (List.exists ctxt#breakpoints ~f:((=) ctxt#pc)) then
+          return ()
+        else
+          super#step_insn*)
+
+  end
