@@ -22,14 +22,25 @@ make `rrender` work every 10k steps
 
 # Left off:
 
+No debug:
+./driver.native --bootrom --speed 0.0
+
+Renders with `step_frame` in non_blocking mode (let rec loop function).
+Need to make it render at the right time. Problem is: while rendering,
+execution continues, and i can't see the screen moving. any attempt
+to slow down or pause execution stops the rendering too: it's in the
+same thread.
+
+Solution: correctly model gpu and rendering. Rendering depends on every clock
+
+http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings
+
+http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html "ctrl-f sync" "ctrl-f subtract"
+
+
 
 LWT_LOG="debug" ./driver.native --bootrom --speed 0.0
 
-
-no$gb, the screen scrolly is updated at 0x86, 0x89. Now, if only my
-debugger actually worked and breakpointed at those points properly.
-
-Debug: (bp 0x86). Why doesn't it behave like no$gb?
 
 ## Hacks
 
