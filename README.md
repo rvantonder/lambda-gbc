@@ -37,6 +37,8 @@ http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings
 
 http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html "ctrl-f sync" "ctrl-f subtract"
 
+The 69905 number comes from here: http://www.codeslinger.co.uk/pages/projects/gameboy/beginning.html
+
 
 
 LWT_LOG="debug" ./driver.native --bootrom --speed 0.0
