@@ -159,8 +159,8 @@ let get_tiles options storage =
   let mask = Word.of_int ~width:8 0x10 in
   (if Word.(lcdc land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
    else "vram-tile-set-1") |> fun data_display_select -> (* 0 - 255 *)
-  printf "map_display_select is: %s\n" map_display_select;
-  printf "data_display_select is: %s\n" data_display_select;
+  (*printf "map_display_select is: %s\n" map_display_select;
+  printf "data_display_select is: %s\n" data_display_select;*)
   if verbose then
     Util.dump_segment storage (Gbc_segment.segment_of_name map_display_select);
   if verbose then

@@ -2,7 +2,8 @@ type breakpoint = int [@@ deriving sexp]
 
 module Request : sig
   type printable = Regs
-                 | Insn [@@ deriving sexp, variants]
+                 | Insn
+                 | Mem of int [@@ deriving sexp, variants]
 
   type steppable = Frame
                  | Insn [@@ deriving sexp, variants]

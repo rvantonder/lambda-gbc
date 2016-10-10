@@ -1,3 +1,166 @@
+# IMPORTANT!!!
+
+To RENDER:
+
+Zoom out all the way, and zoom in ONCE.
+
+Code:
+
+`step_frame` on empty requests in loop for FAST
+
+For debugging:
+
+
+
+`step_insn` in loop for no req
+
+
+possible optimization:
+
+make `rrender` work every 10k steps
+
+
+# Left off:
+
+
+LWT_LOG="debug" ./driver.native --bootrom --speed 0.0
+
+
+no$gb, the screen scrolly is updated at 0x86, 0x89. Now, if only my
+debugger actually worked and breakpointed at those points properly.
+
+Debug: (bp 0x86). Why doesn't it behave like no$gb?
+
+## Hacks
+
+a FRAME step is a RENDERING optimization. if we do `./driver.native --botrom --speed 0.0`, things
+will work, but we don't want to render every time.
+
+
+Hack for now: render every 10k steps. For some reason the boot rom is only about 47k steps,
+so the 69k steps isn't getting hit. we will sync this up with the step_frame once
+the gpu works correctly.
+
+## Debugger commands:
+
+`(bp 0x86)`
+
+`(print insn)`
+
+`(print regs)`
+
+`(print (mem 0x0))`
+
+`(step insn)`
+
+`(step frame)`
+
+`render`
+
+`pause`
+
+`resume`
+
+`help`
+
+Return: repeat last command.
+
+## Debug SCY, cool example
+
+```
+(bp 0x86)
+resume
+(print (mem 0xFF42))
+-> 64
+resume
+(print (mem 0xFF42))
+-> 63
+```
+
+## Small fixes for one day
+
+use bap word for breakpoints/pc. not int (see debugger_types.mli)
+
+debugger should nto have 'dump' methods. should return the value
+and i should make a separate 'printer' class.
+
+## blah
+
+by default, the interpreter continues with `next_insn` and not `next_frame`,
+because with `next_frame`, on resume, the bp gets skipped (even though, in the
+ideal implementation, it shouldn't)
+
+In other words, this should work, but doesnt:
+
+```
+(bp 0x4)
+(step frame)
+-> BP triggered!, entering blocking mode (already in blocking mode)
+```
+
+Instead it just continues.
+
+
+Whenever (step frame) is called we will batch-process an entire frame before
+listening to any event again. That's why. Even though the bp triggered event is sent,
+we are not aborting step frame because it was triggered. correct behavior would do this.
+
+To get this, we would need to listen for evnts after each insn step inside a
+frame. Not going to bother. frames are there so we can execute big pieces with a
+given syncrhony. only.
+
+
+## Logging
+
+Only logging under section "ev_*" will be printed, and those that map to debug.
+
+`"ev_* -> debug"`
+
+`LWT_LOG="ev_* -> debug" ./driver.native --bootrom --speed 0.0`
+
+All debug messages:
+
+`LWT_LOG="debug" ./driver.native --bootrom --speed 0.0`
+
+same as
+
+`LWT_LOG="* -> debug" ./driver.native --bootrom --speed 0.0`
+
+
+
+
+## The bug
+
+
+Bil can be nested:
+
+```
+Sep 18 22:14:43: ev_int_dbg_eval: {
+Sep 18 22:14:43: ev_int_dbg_eval:   if (~FZ) {
+Sep 18 22:14:43: ev_int_dbg_eval:     jmp (0xC:16 + (extend:16[0xFB:8]))
+Sep 18 22:14:43: ev_int_dbg_eval:   }
+Sep 18 22:14:43: ev_int_dbg_eval: }
+```
+
+interpreter #eval is called recursively on structures like the above. First evaluates if, then jmp. So, when
+we have something that sends events like 'pause', it may send it multiple times before returning.
+
+this could be fixd by putting it in 'step_insn', which is at least atomic.
+
+But the bigger issue is, should we be using mailbox already, or the queue for lwt?
+
+because the second part of this bug is that two events are added, and then we enter infniloop
+
+
+
+
+
+
+
+
+
+
+
 ## Design
 
 ```
@@ -88,143 +251,3 @@ Run k steps
 Hex dump and disassemble at offset
 
 `./driver.native --hd --disas 0x100`
-
-
-# TODO
-
-Get it to work fully on bootrom, with updating Nintendo logo.
-
-Debug mode:
-
-`./driver.native --bootrom --speed 1.0 --di`
-
-Then switch to tetris.
-
-
-
-# Thoughts
-
-Added sleep/wake threads above the two threads that get joined. I can pause/resume once. But after that,
-no idea.
-
-BUT! can i create a sleep/resume pair and then send the thread to the frame_loop?
-
-
-
-# Left off:
-
-
-LWT_LOG="debug" ./driver.native --bootrom --speed 0.0 
-
-
-no$gb, the screen scrolly is updated at 0x86, 0x89. Now, if only my
-debugger actually worked and breakpointed at those points properly.
-
-Debug: (bp 0x86). Why doesn't it behave like no$gb?
-
-
-Minimal example bug:
-
-(bp 0x7)
-resume
--> ok at this point
-resume -> fuck
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Debugger commands: (print insn), (print regs), pause, resume, help, (bp 0x3)
-
-
-a FRAME step is a RENDERING optimization. if we do `./driver.native --botrom --speed 0.0`, things
-will work, but we don't want to render every time.
-
-
-Hack for now: render every 10k steps. For some reason the boot rom is only about 47k steps,
-so the 69k steps isn't getting hit. we will sync this up with the step_frame once
-the gpu works correctly.
-
-previous 
-running `./driver.native --bootrom --speed 1.0` and testing debugger.
-is good for frames, to make it go fast, with the clock speed sync. But the sync
-part is independent of debugger correctness. so don't use next_frame while debugging.
-
-
-Some things:
-
-'current hunk' is the one behind the one just executed by pc. there's some mismatch
-when i print the current instruction, versus regs. stupid.
-
-normal interpreter doesn't type check yet, because we are explicitly calling breakpoint functionality.
-this should be separated properly eventually.
-
-by default, the interpreter continues with `next_insn` and not `next_frame`, because with
-`next_frame`, on resume, the bp gets skipped (even though, in the ideal implementation, it shouldn't)
-
-In other words, this should work, but doesnt:
-
-```
-(bp 0x4)
-(step frame)
--> BP triggered!, entering blocking mode (already in blocking mode)
-```
-
-Instead it just continues.
-
-
-Whenever (step frame) is called we will batch-process an entire frame before
-listening to any event again. That's why. Even though the bp triggered event is sent,
-we are not aborting step frame because it was triggered. correct behavior would do this.
-
-To get this, we would need to listen for evnts after each insn step inside a frame. Not going
-to bother. frames are there so we can execute big pieces with a given syncrhony. only.
-
-
-
-Only logging under section "ev_*" will be printed, and those that map to debug.
-"ev_* -> debug"
-
-LWT_LOG="ev_* -> debug" ./driver.native --bootrom --speed 0.0 
-
-All debug messages:
-
-LWT_LOG="debug" ./driver.native --bootrom --speed 0.0 
-same as
-LWT_LOG="* -> debug" ./driver.native --bootrom --speed 0.0 
-
-
-
-
-## The bug
-
-
-Bil can be nested:
-
-```
-Sep 18 22:14:43: ev_int_dbg_eval: {
-Sep 18 22:14:43: ev_int_dbg_eval:   if (~FZ) {
-Sep 18 22:14:43: ev_int_dbg_eval:     jmp (0xC:16 + (extend:16[0xFB:8]))
-Sep 18 22:14:43: ev_int_dbg_eval:   }
-Sep 18 22:14:43: ev_int_dbg_eval: }
-```
-
-interpreter #eval is called recursively on structures like the above. First evaluates if, then jmp. So, when 
-we have something that sends events like 'pause', it may send it multiple times before returning.
-
-this could be fixd by putting it in 'step_insn', which is at least atomic.
-
-But the bigger issue is, should we be using mailbox already, or the queue for lwt?
-
-because the second part of this bug is that two events are added, and then we enter infniloop
-

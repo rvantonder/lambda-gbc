@@ -9,3 +9,5 @@ B _build/src/emulator
 
 s src/render
 B _build/src/render
+
+S /home/vagrant/core_kernel.113.33.03/src

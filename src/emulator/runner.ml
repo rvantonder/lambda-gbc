@@ -48,20 +48,29 @@ module Z80_interpreter_loop = struct
     (if size.rows < 289 || size.cols < 1430 then (* XXX thumb suck *)
        raise (Failure "I'm refuse to continue drawing. Screen too small"))
 
-  let draw_bg ctxt tiles =
-    Background.from_tile_list tiles ctxt |> Background.render
+  let draw_bg ctxt lterm_ctxt tiles =
+    let offset addr =
+      let addr = Addr.of_int ~width:16 addr in
+      let value = ctxt#mem_at_addr addr in
+      match value with
+      | Some v -> Some (Word.to_int v |> Or_error.ok_exn)
+      | _ -> None in
+    let offset_y = offset 0xFF42 in
+    let offset_x = offset 0xFF43 in
+    Background.from_tile_list ?offset_y ?offset_x tiles lterm_ctxt |>
+    Background.render
 
   (** TODO: why if i raise exception here does it get ignored? *)
-  let draw ui matrix tiles =
+  let draw ctxt ui matrix tiles =
     let open LTerm_geom in
     let size = LTerm_ui.size ui in
-    let ctxt = LTerm_draw.context matrix size in
+    let lterm_ctxt = LTerm_draw.context matrix size in
     (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
       Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
       (if size.rows < 289 || size.cols < 1430 then
        raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-    LTerm_draw.clear ctxt;
-    draw_bg ctxt tiles
+    LTerm_draw.clear lterm_ctxt;
+    draw_bg ctxt lterm_ctxt tiles
 
   let storage_of_context ctxt =
     let open Option in
@@ -102,19 +111,30 @@ module Z80_interpreter_loop = struct
         ctxt#print_cpu;
         ctxt
       | Print Insn,_ ->
-        Format.printf "%a\n%!" Z80_disassembler.Hunk.pp ctxt#current_hunk;
+        (** PC is updated, but current hunk is not yet. So hit decode to get
+            the current hunk *)
+        let hunk : Z80_disassembler.Hunk.t = (ctxt#decode)#current_hunk in
+        Format.printf "%a\n%!" Z80_disassembler.Hunk.pp hunk;
         ctxt
       | Bp addr,_ ->
         ctxt#add_breakpoint addr
+      | Render,_ ->
+        rrender ctxt;
+        ctxt
+      | Print Mem w,_ ->
+        let addr = Addr.of_int ~width:16 w in
+        let value = ctxt#mem_at_addr addr in
+        (match value with
+         | Some v -> Format.printf "0x%x\n%!" @@
+           (Word.to_int v |> Or_error.ok_exn)
+         | None -> Format.printf "_|_\n%!");
+        ctxt
       | Help,_ ->
         let pp rq_variant =
           let rq = rq_variant.Variantslib.Variant.name in
           printf "%s@." rq in
         Variants.iter ~pause:pp ~resume:pp ~bp:pp ~step:pp ~print:pp ~help:pp
           ~render:pp;
-        ctxt
-      | Render,_ ->
-        rrender ctxt;
         ctxt
       (** Any other command in the blocking state is ctxt *)
       | _,`Blocking -> ctxt
@@ -163,7 +183,7 @@ module Z80_interpreter_loop = struct
     let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_non_blking" in
 
     (** Create screen matrix. XXX mutable state *)
-    LTerm_ui.create term (fun ui matrix -> draw ui matrix !ref_tiles) >>= fun ui ->
+    LTerm_ui.create term (fun ui matrix -> draw ctxt ui matrix !ref_tiles) >>= fun ui ->
 
     let rrender ctxt = update_tiles_from_mem options ctxt in
 
@@ -173,8 +193,8 @@ module Z80_interpreter_loop = struct
 
       (** Render: Set tiles from memory *)
       (* Hack: only render ever 10k steps *)
-      if count mod 10000 = 0 then
-        rrender ctxt;
+      (*if count mod 10000 = 0 then*)
+      rrender ctxt;
       LTerm_ui.draw ui;
 
       (** Non-blocking: handle input requests *)
@@ -192,7 +212,7 @@ module Z80_interpreter_loop = struct
          (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
-         step_insn ctxt |> return
+         step_frame ctxt |> return
        | _ ->
          Lwt_log.ign_fatal ~section "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"
@@ -281,7 +301,7 @@ let start_event_loop refresh_rate_frame options image =
   Lwt_log.file ~file_name:"lgbc.log" ~mode:`Truncate () >>= fun logger ->
   (** All interpreter debugger request events under "ev_*" section
       are logged to Debug level. *)
-  Lwt_log_core.add_rule "ev_*" Lwt_log_core.Debug;
+  (*Lwt_log_core.add_rule "ev_*" Lwt_log_core.Debug;*)
   Lwt_log.default := logger;
 
   let recv_stream, send_stream = Lwt_stream.create () in

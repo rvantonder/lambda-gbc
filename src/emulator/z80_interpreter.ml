@@ -172,6 +172,13 @@ class context image options = object(self : 's)
   method inc_cpu_clock =
     {< cpu_clock = cpu_clock + current_hunk.cycles >}
 
+  method mem_at_addr (addr : addr) : word option =
+    let open Option in
+    self#lookup (Z80_env.mem) >>= fun result ->
+    match Bil.Result.value result with
+    | Bil.Mem storage -> storage#load addr
+    | _ -> None
+
   (** Note that lookup can also be done in interpreter, and it returns 'a r *)
   method dump_ram =
     match self#lookup (Z80_env.mem) with
