@@ -39,6 +39,8 @@ http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html "ctrl-f sync" "ctrl
 
 The 69905 number comes from here: http://www.codeslinger.co.uk/pages/projects/gameboy/beginning.html
 
+At this speed, the screen is rendered 60 times a second. The gpu clock is relative to this number.
+
 
 
 LWT_LOG="debug" ./driver.native --bootrom --speed 0.0
