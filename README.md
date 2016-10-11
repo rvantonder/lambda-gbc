@@ -37,6 +37,9 @@ http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings
 
 http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html "ctrl-f sync" "ctrl-f subtract"
 
+
+Emulator::Update is 60 times every second. 69905 insn per 1/60th a second are executed, and then the screen is rendered. http://www.codeslinger.co.uk/pages/projects/gameboy/beginning.html
+
 The 69905 number comes from here: http://www.codeslinger.co.uk/pages/projects/gameboy/beginning.html
 
 Pandocs says 70244
