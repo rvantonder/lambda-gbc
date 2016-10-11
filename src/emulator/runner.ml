@@ -212,7 +212,7 @@ module Z80_interpreter_loop = struct
          (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
-         step_frame ctxt |> return
+         step_insn ctxt |> return
        | _ ->
          Lwt_log.ign_fatal ~section "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"
@@ -280,12 +280,12 @@ let set_up_debug_interp_loop refresh_rate_frame options
     new Z80_interpreter_debugger.z80_interpreter_debugger image options
       send_stream in
 
-  let stmts =
-    if options.bootrom then Boot.clean_state
-    else Boot.ready_state in
+  let init_pc,stmts =
+    if options.bootrom then 0x0,Boot.clean_state
+    else 0x100,Boot.ready_state in
 
   let ctxt = new Z80_interpreter_debugger.context image options in
-  let ctxt = ctxt#with_pc (Bil.Imm (i16 0)) in
+  let ctxt = ctxt#with_pc (Bil.Imm (i16 init_pc)) in
   let start = interp#eval stmts in
 
   let ctxt = Monad.State.exec start ctxt in

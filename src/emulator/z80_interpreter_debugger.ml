@@ -61,4 +61,10 @@ class ['a] z80_interpreter_debugger image options send_stream =
          send_stream (Some Request.Pause));
       return ()
 
+    (** In debug mode, do not call super eval_special, which wil terminate and say
+        'not implimented' *)
+    method! eval_special s=
+      send_stream (Some Request.Pause);
+      return ()
+
   end

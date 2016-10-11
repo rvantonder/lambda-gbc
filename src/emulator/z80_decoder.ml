@@ -11,6 +11,11 @@ IS DIFFERENT FROM
 https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L3875
 
 wtf?!?!
+
+My version looks (mostly) right compared to pandocs. except for ld that takes 20 wtf.
+ctrl-f "CPU Instruction Set"
+
+http://bgb.bircd.org/pandocs.htm#cgbregisters
 *)
 
 let verbose = true

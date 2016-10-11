@@ -12,6 +12,8 @@ let highlight s =
 
 let var_of_reg = Env.of_reg
 let exp_of_reg = Fn.compose Bil.var var_of_reg
+let false_ = Bil.int Word.b0
+let true_ = Bil.int Word.b1
 
 let (!$) = var_of_reg
 let (!) = exp_of_reg
@@ -113,8 +115,8 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(jmp ((var Env.pc) + to_s16 (int x)))]
   | `BIT,[`Imm idx; #Z80.Reg8.t as r] ->
     let bit_to_test = Bil.(!r lsr (int idx)) in
-    [Bil.(Env.fh := int Word.b1);
-     Bil.(Env.fn := int Word.b0);
+    [Bil.(Env.fh := true_);
+     Bil.(Env.fn := false_);
       Bil.(Env.fz := cast_lo1 @@ lnot bit_to_test)]
 
   | `INC,[#Z80.Reg8.t as r] ->
