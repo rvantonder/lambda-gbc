@@ -39,6 +39,13 @@ http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html "ctrl-f sync" "ctrl
 
 The 69905 number comes from here: http://www.codeslinger.co.uk/pages/projects/gameboy/beginning.html
 
+Pandocs says 70244
+```
+Mode 0 is present between 201-207 clks, 2 about 77-83 clks, and 3 about 169-175 clks. A complete cycle through these states takes 456 clks. VBlank lasts 4560 clks. A complete screen refresh occurs every 70224 clks.)
+```
+
+http://bgb.bircd.org/pandocs.htm#lcdpositionandscrolling
+
 At this speed, the screen is rendered 60 times a second. The gpu clock is relative to this number.
 
 
