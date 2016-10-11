@@ -113,7 +113,9 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(jmp ((var Env.pc) + to_s16 (int x)))]
   | `BIT,[`Imm idx; #Z80.Reg8.t as r] ->
     let bit_to_test = Bil.(!r lsr (int idx)) in
-    [Bil.(Env.fz := cast_lo1 @@ lnot bit_to_test)]
+    [Bil.(Env.fh := int Word.b1);
+     Bil.(Env.fn := int Word.b0);
+      Bil.(Env.fz := cast_lo1 @@ lnot bit_to_test)]
 
   | `INC,[#Z80.Reg8.t as r] ->
     [inc ~r] @

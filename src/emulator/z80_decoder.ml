@@ -2,6 +2,17 @@ open Core_kernel.Std
 open Bap.Std
 open Unsigned
 
+(** Ticks:
+https://github.com/CTurt/Cinoop/blob/master/source/cb.c#L275
+https://github.com/CTurt/Cinoop/blob/master/source/cpu.c#L308
+
+IS DIFFERENT FROM
+
+https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L3875
+
+wtf?!?!
+*)
+
 let verbose = true
 
 (** For rotation operations, the format differs:
@@ -68,7 +79,7 @@ let decode_extended bytes pos cc =
        let idx = idx_from_code code in
        (match reg with
         | `HL -> ~> (insn,[!idx ; reg]) 2 16 (** TODO CLOCK IS WRONG
-                                                 FOR 0xCB *)
+                                                 FOR 0xCB. Should be 12 sometimes *)
         | _ -> ~> (insn,[!idx ; reg]) 2 8)
      | `ROT ->
        let insn = decode_rot code in
