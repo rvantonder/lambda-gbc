@@ -9,7 +9,6 @@
 /*.byte
 /*.docdir
 /*.native
-/Makefile
 /_build/
 /_tags
 /configure
