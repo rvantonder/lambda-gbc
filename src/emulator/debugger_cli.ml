@@ -31,7 +31,8 @@ module Command_interpreter = struct
         printf "Uncaught exception in Debugger_command.ml: %s\n%!" s;
         state
     in
-    let out = "evaluated " ^ rq in
+    (*let out = "evaluated " ^ rq in*)
+    let out = "" in
     let new_state = { state' with n = state'.n + 1 } in
     (new_state, out)
 
@@ -41,10 +42,6 @@ end
     it does the magic*)
 module Repl = struct
 
-  (** When using dot notation for accesing record fields, we can
-      qualify the field by the module directly
-      https://realworldocaml.org/v1/en/html/records.html. Only for
-      record types. Not function. *)
   (* Create a prompt based on the current interpreter state *)
   let make_prompt state =
     let prompt = Printf.sprintf "In  [%d]: " state.Command_interpreter.n in

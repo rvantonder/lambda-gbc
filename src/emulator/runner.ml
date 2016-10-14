@@ -31,8 +31,10 @@ module Input_loop = struct
           | exn -> Lwt.fail exn) >>= function
       | Some command ->
         (* Parse and send the command *)
-        let state',out = Debugger_cli.Command_interpreter.process history state command in
-        LTerm.fprintls term (make_output state' out) >>= fun () ->
+        let state',out = Debugger_cli.Command_interpreter.process
+            history state command in
+        (* Don't really need CLI to dump output here*)
+        (*LTerm.fprintls term (make_output state' out) >>= fun () ->*)
         LTerm_history.add history command;
         loop term history state'
       | None -> loop term history state in
@@ -95,7 +97,8 @@ module Z80_interpreter_loop = struct
       2) When non-blocking, an unrecognized request should simply step the
       interpreter. Otherwise, each unrecognized command issued will
       "skip" the frame for that cycle. *)
-  let handle_request ctxt step_frame step_insn rrender (rq,state) =
+  let handle_request ctxt step_frame step_insn rrender (rq,state)
+    : Z80_interpreter_debugger.context Lwt.t =
     let open Debugger_types.Request in
     let section = Lwt_log.Section.make "ev_dbg_rq_rcv" in
     (match state with
@@ -114,6 +117,7 @@ module Z80_interpreter_loop = struct
         (** PC is updated, but current hunk is not yet. So hit decode to get
             the current hunk *)
         let hunk : Z80_disassembler.Hunk.t = (ctxt#decode)#current_hunk in
+        Format.printf "\n%!";
         Format.printf "%a\n%!" Z80_disassembler.Hunk.pp hunk;
         ctxt
       | Bp addr,_ ->
@@ -124,6 +128,7 @@ module Z80_interpreter_loop = struct
       | Print Mem w,_ ->
         let addr = Addr.of_int ~width:16 w in
         let value = ctxt#mem_at_addr addr in
+        Format.printf "\n%!";
         (match value with
          | Some v -> Format.printf "0x%x\n%!" @@
            (Word.to_int v |> Or_error.ok_exn)
@@ -133,6 +138,7 @@ module Z80_interpreter_loop = struct
         let pp rq_variant =
           let rq = rq_variant.Variantslib.Variant.name in
           printf "%s@." rq in
+        Format.printf "\n%!";
         Variants.iter ~pause:pp ~resume:pp ~bp:pp ~step:pp ~print:pp ~help:pp
           ~render:pp;
         ctxt
@@ -212,7 +218,7 @@ module Z80_interpreter_loop = struct
          (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
-         step_frame ctxt |> return
+         step_insn ctxt |> return
        | _ ->
          Lwt_log.ign_fatal ~section "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"

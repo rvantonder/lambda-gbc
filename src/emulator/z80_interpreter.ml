@@ -229,6 +229,8 @@ class context image options = object(self : 's)
       let value = result_of_reg flag |> to_value |> to_imm1 in
       sprintf "%s=%s" name value in
     let print2 reg flag = printf "│%8s%4s%-11s│\n%!" !reg " " !!flag in
+    printf "\n%!";
+    printf "┌%s┐\n%!" "----------------------";
     print2 CPU.af CPU.fz;
     print2 CPU.bc CPU.fn;
     print2 CPU.de CPU.fh;
@@ -237,7 +239,9 @@ class context image options = object(self : 's)
     printf "│%s %4s%8s|\n%!" (!CPU.sp) " " " ";
     printf "│PC=%s %4s%8s|\n%!" (to_imm8 self#pc) " " " ";
     printf "|k=0x%04x %4s%8s|\n%!" self#k " " " ";
-    printf "|clock=0x%04x %4s%8s|\n%!" self#cpu_clock " " " "
+    printf "|clock=0x%04x %4s%8s|\n%!" self#cpu_clock " " " ";
+    printf "└%s┘\n%!" "----------------------";
+
 
   method print_lifted_stmts stmts =
     let purple = "\x1b[45m" in
