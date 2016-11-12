@@ -1,18 +1,20 @@
 # IMPORTANT!!!
 
-To RENDER:
+To RENDER with `step_frame`:
 
-* ./driver.native --bootrom --speed 0.0
 * Zoom out FIRST, all the way, and zoom in ONCE.
+* ./driver.native --bootrom --speed 0.0
 * THEN RESUME
 * `step_frame` on empty requests in loop for FAST
 
-For debugging:
+To RENDER ON DEMAND wtih `step_insn`: 
 
-specify no render: much faster execution.
-
-* `./driver.native --bootrom --nr --speed 0.0`
-* `step_insn` in loop for no req
+* Zoom out FIRST, all the way, and zoom in ONCE.
+* `./driver.native --bootrom --nr --speed 0.0` ; use no-render, much faster execution
+* `(bp 0xf9)`
+* resume
+* wait
+* render
 
 ### TODO: different timings depending on jump success
 
