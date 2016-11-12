@@ -346,7 +346,8 @@ let decode bytes pos cc =
   | [0xDA;x;y;_] -> ~> (`PUSH, [`FC; !y; !x]) 3 12 (* JP FC, carry *)
   | [0xDB;_;_;_] -> failwith "Illegal opcode 0xDB"
   | [0xDC;x;y;_] -> ~> (`CALL, [`FC]) 1 12 (* CALL FC, carry *)
-  | [0xDD;_;_;_] -> failwith "Illegal opcode 0xDD"
+  | [0xDD;_;_;_] -> failwith
+                      (sprintf "Illegal opcode 0xDD at 0x%x" pos)
   | [0xDE;x;_;_] -> ~> (`SBC, [a; !x]) 2 8
   | [0xDF;_;_;_] -> ~> (`RST, [!0x18]) 1 16
   | [0xE0;x;_;_] -> ~> (`LD, [!0x00; !0xff; !x; a]) 2 12 (* special, save A at (FF00+byte)*)

@@ -55,8 +55,10 @@ module Z80_interpreter_loop = struct
       let addr = Addr.of_int ~width:16 addr in
       let value = ctxt#mem_at_addr addr in
       match value with
-      | Some v -> Some (Word.to_int v |> Or_error.ok_exn)
-      | _ -> None in
+      | Some v ->
+        Some (Word.to_int v |> Or_error.ok_exn)
+      | _ ->
+        None in
     let offset_y = offset 0xFF42 in
     let offset_x = offset 0xFF43 in
     Background.from_tile_list ?offset_y ?offset_x tiles lterm_ctxt |>
@@ -109,7 +111,14 @@ module Z80_interpreter_loop = struct
     let ctxt' =
       match rq,state with
       | Step Frame,_ -> step_frame ctxt
-      | Step Insn,_ -> step_insn ctxt
+      | Step Insn,_ ->
+        let ctxt = step_insn ctxt in
+        (** PC is updated, but current hunk is not yet. So hit decode to get
+            the current hunk *)
+        let hunk : Z80_disassembler.Hunk.t = (ctxt#decode)#current_hunk in
+        Format.printf "\n%!";
+        Format.printf "%a\n%!" Z80_disassembler.Hunk.pp hunk;
+        ctxt
       | Print Regs,_ ->
         ctxt#print_cpu;
         ctxt
@@ -123,6 +132,7 @@ module Z80_interpreter_loop = struct
       | Bp addr,_ ->
         ctxt#add_breakpoint addr
       | Render,_ ->
+        Format.printf "Attempting flail render\n%!";
         rrender ctxt;
         ctxt
       | Print Mem w,_ ->
@@ -191,7 +201,10 @@ module Z80_interpreter_loop = struct
     (** Create screen matrix. XXX mutable state *)
     LTerm_ui.create term (fun ui matrix -> draw ctxt ui matrix !ref_tiles) >>= fun ui ->
 
-    let rrender ctxt = update_tiles_from_mem options ctxt in
+    let rrender ctxt =
+      update_tiles_from_mem options ctxt;
+      LTerm_ui.draw ui
+    in
 
     let rec loop ui ctxt count =
       let open Debugger_types.Request in
@@ -200,8 +213,9 @@ module Z80_interpreter_loop = struct
       (** Render: Set tiles from memory *)
       (* Hack: only render ever 10k steps *)
       (*if count mod 10000 = 0 then*)
-      rrender ctxt;
-      LTerm_ui.draw ui;
+      if not options.no_render then
+        (rrender ctxt;
+         LTerm_ui.draw ui);
 
       (** Non-blocking: handle input requests *)
       (match Lwt_stream.get_available recv_stream with
@@ -218,7 +232,7 @@ module Z80_interpreter_loop = struct
          (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
-         step_insn ctxt |> return
+         step_frame ctxt |> return
        | _ ->
          Lwt_log.ign_fatal ~section "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"
@@ -327,8 +341,7 @@ let start_event_loop refresh_rate_frame options image =
 
   (*Lwt_log.ign_debug "Spinning up event loops...";*)
   Lwt.finalize
-    (fun () -> Lwt.join
-        [interp_loop;input_loop])
+    (fun () -> Lwt.join [interp_loop;input_loop])
     (fun () -> return ()) (* TODO: cleanup. somehow Lterm_ui.quit ui *)
 
 let run options image =
