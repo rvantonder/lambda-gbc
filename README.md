@@ -2,18 +2,28 @@
 
 To RENDER:
 
-Zoom out all the way, and zoom in ONCE.
-
-Code:
-
-`step_frame` on empty requests in loop for FAST
+* ./driver.native --bootrom --speed 0.0
+* Zoom out all the way, and zoom in ONCE.
+* `step_frame` on empty requests in loop for FAST
 
 For debugging:
 
+specify no render: much faster execution.
 
+* `./driver.native --bootrom --nr --speed 0.0`
+* `step_insn` in loop for no req
 
-`step_insn` in loop for no req
+### TODO: different timings depending on jump success
 
+other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/projects/gameboy/files/GB.pdf
+
+--------------------------------------
+
+### Interactive debugger: separate window with reg updates like GDB
+### RRender interactive
+### Remote debug over stdin/network. May fix screen shit.
+
+--------------------------------------
 
 possible optimization:
 
