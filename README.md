@@ -11,6 +11,7 @@ For debugging:
 
 `step_insn` in loop for no req
 
+### TODO: different timings depending on jump success
 
 possible optimization:
 
