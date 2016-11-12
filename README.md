@@ -13,6 +13,12 @@ For debugging:
 
 ### TODO: different timings depending on jump success
 
+other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/projects/gameboy/files/GB.pdf
+
+
+
+--------------------------------------
+
 possible optimization:
 
 make `rrender` work every 10k steps
