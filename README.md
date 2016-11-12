@@ -21,6 +21,7 @@ other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/project
 
 ### Interactive debugger: separate window with reg updates like GDB
 ### RRender interactive
+### Remote debug over stdin/network. May fix screen shit.
 
 --------------------------------------
 
