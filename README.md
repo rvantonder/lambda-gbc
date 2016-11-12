@@ -2,11 +2,8 @@
 
 To RENDER:
 
-Zoom out all the way, and zoom in ONCE.
-
-Code:
-
-`step_frame` on empty requests in loop for FAST
+* Zoom out all the way, and zoom in ONCE.
+* `step_frame` on empty requests in loop for FAST
 
 For debugging:
 
