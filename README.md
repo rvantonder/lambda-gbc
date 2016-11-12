@@ -3,7 +3,8 @@
 To RENDER:
 
 * ./driver.native --bootrom --speed 0.0
-* Zoom out all the way, and zoom in ONCE.
+* Zoom out FIRST, all the way, and zoom in ONCE.
+* THEN RESUME
 * `step_frame` on empty requests in loop for FAST
 
 For debugging:
