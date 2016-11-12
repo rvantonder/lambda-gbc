@@ -17,7 +17,9 @@ specify no render: much faster execution.
 
 other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/projects/gameboy/files/GB.pdf
 
+--------------------------------------
 
+### Interactive debugger: separate window with reg updates like GDB
 
 --------------------------------------
 
