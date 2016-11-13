@@ -15,6 +15,7 @@ class context : Z80_image.t -> Options.t -> object('s)
     method cpu_clock : int
     method decode : 's
     method mem_at_addr : addr -> word option
+    method read_reg : var -> word option
     method dump_ram : unit
     method dump_vram : unit
     method get_current_bil : stmt list

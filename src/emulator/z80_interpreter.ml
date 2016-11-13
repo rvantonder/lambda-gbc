@@ -169,8 +169,64 @@ class context image options = object(self : 's)
 
   method inc_k = {< k = k + 1>}
 
+  method private value_to_word =
+      function
+      | Bil.Imm w -> Some w
+      | _ -> None
+
+  method read_reg reg =
+    let to_value bil_result =
+      Bil.Result.value bil_result |>
+      self#value_to_word in
+    Seq.find_exn self#bindings ~f:(fun (v,bil_result) ->
+        Var.(v = reg)) |> snd |> to_value
+
+  (** Special cases for incrementing cpu clock:
+      (1) Conditional jump
+      (2) Relative Conditional jump
+      (3) Conditional call.
+      These need more clocks if condition succeeds.
+      We do the check here based on (a) ctxt state and
+      (b) disassembled instruction pattern. We can't
+      do it in eval_jmp because we don't know which
+      of the three the jump comes from without looking
+      at the hunk anyway *)
   method inc_cpu_clock =
-    {< cpu_clock = cpu_clock + current_hunk.cycles >}
+    let is_true flag b = match self#read_reg flag with
+      | Some w -> if w = b then true else false
+      | _ -> false in
+    let flag_is_true =
+      function
+      | `FNC -> is_true CPU.fc Word.b0
+      | `FC ->  is_true CPU.fc Word.b1
+      | `FNZ -> is_true CPU.fz Word.b0
+      | `FZ ->  is_true CPU.fz Word.b1
+      | _ -> failwith "Unhandled flag in inc_cpu_clock" in
+    let add_clocks true_ false_ flag =
+      match flag_is_true flag with
+      | true -> true_
+      | false -> false_ in
+    match current_hunk.stmt with
+    | (`JR,[#Z80_disasm.Cond.t as flag; _]) ->
+      (* For `JR, default is 8 if false. Else, 12 if true. TODO:
+         embed hardcoded 12 in hunk data structure *)
+      let _false = current_hunk.cycles in
+      let _true = 12 in
+      let clocks = add_clocks _true _false flag in
+      {< cpu_clock = cpu_clock + clocks >}
+    | (`JP,[#Z80_disasm.Cond.t as flag; _]) ->
+      (* For `JP, default is 12 if false. Else, 16 if true *)
+      let _false = current_hunk.cycles in
+      let _true = 16 in
+      let clocks = add_clocks _true _false flag in
+      {< cpu_clock = cpu_clock + clocks >}
+    | (`CALL,[#Z80_disasm.Cond.t as flag; _]) ->
+      (* For `CALL, default is 12 if false. Else, 24 if true *)
+      let _false = current_hunk.cycles in
+      let _true = 24 in
+      let clocks = add_clocks _true _false flag in
+      {< cpu_clock = cpu_clock + clocks >}
+    | _ -> {< cpu_clock = cpu_clock + current_hunk.cycles >}
 
   method mem_at_addr (addr : addr) : word option =
     let open Option in
@@ -210,23 +266,19 @@ class context image options = object(self : 's)
     | _ -> ()
 
   method print_cpu =
-    let result_of_reg reg =
-      Seq.find_exn self#bindings ~f:(fun (v,bil_result) ->
-          Var.equal v reg) |> snd in
-    let to_value bil_result = Bil.Result.value bil_result in
     let to_imm8 = function
-      | Bil.Imm w -> sprintf "0x%04x" (Word.to_int w |> ok_exn)
+      | Some w -> sprintf "0x%04x" (Word.to_int w |> ok_exn)
       | _ -> "" in
     let (!) reg =
       let name = Var.name reg in
-      let value = result_of_reg reg |> to_value |> to_imm8 in
+      let value = self#read_reg reg |> to_imm8 in
       sprintf "%s=%s" name value in
     let to_imm1 = function
-      | Bil.Imm w -> if w = Word.b1 then "▣" else "☐"
+      | Some w -> if w = Word.b1 then "▣" else "☐"
       | _ -> "" in
     let (!!) flag =
       let name = Var.name flag in
-      let value = result_of_reg flag |> to_value |> to_imm1 in
+      let value = self#read_reg flag |> to_imm1 in
       sprintf "%s=%s" name value in
     let print2 reg flag = printf "│%8s%4s%-11s│\n%!" !reg " " !!flag in
     printf "\n%!";
@@ -237,7 +289,7 @@ class context image options = object(self : 's)
     print2 CPU.hl CPU.fc;
     printf "│%22s|\n%!" " ";
     printf "│%s %4s%8s|\n%!" (!CPU.sp) " " " ";
-    printf "│PC=%s %4s%8s|\n%!" (to_imm8 self#pc) " " " ";
+    printf "│PC=%s %4s%8s|\n%!" (to_imm8 (self#value_to_word self#pc)) " " " ";
     printf "|k=0x%04x %4s%8s|\n%!" self#k " " " ";
     printf "|clock=%04d %4s%8s|\n%!" (self#cpu_clock/4) " " " ";
     printf "└%s┘\n%!" "----------------------";

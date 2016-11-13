@@ -192,7 +192,7 @@ let decode bytes pos cc =
   | [0x2D;_;_;_] -> ~> (`DEC, [l]) 1 4
   | [0x2E;x;_;_] -> ~> (`LD, [l; !x]) 2 8
   | [0x2F;_;_;_] -> ~> (`CPL, [a]) 1 4
-  | [0x30;x;_;_] -> ~> (`JR, [!x]) 2 8 (* 8 if cc false, 12 if true*)
+  | [0x30;x;_;_] -> ~> (`JR, [`FNC; !x]) 2 8 (* 8 if cc false, 12 if true*)
   | [0x31;x;y;_] -> ~> (`LD, [sp; !y; !x]) 3 12
   (* special gbc semantics: Save a at hl and decrement hl. I
      communicate this information by passing an immediate with this LD by
@@ -203,7 +203,7 @@ let decode bytes pos cc =
   | [0x35;_;_;_] -> ~> (`DEC, [hl]) 1 12
   | [0x36;x;_;_] -> ~> (`LD, [hl;!x]) 2 12
   | [0x37;x;_;_] -> ~> (`SCF, []) 1 4  (* CY = 1 *)
-  | [0x38;x;_;_] -> ~> (`JR, [!x]) 2 8 (* 8 if cc false, 12 if true*) (* IF CY then PC+PC+x *)
+  | [0x38;x;_;_] -> ~> (`JR, [`FC; !x]) 2 8 (* 8 if cc false, 12 if true*) (* IF CY then PC+PC+x *)
   | [0x39;x;_;_] -> ~> (`ADD, [hl;sp]) 2 8
   | [0x3A;x;y;_] -> ~> (`LD, [a ; hl; !(-1)]) 1 8 (* special gbc LD A, (HLD) *)
   | [0x3B;_;_;_] -> ~> (`DEC, [sp]) 1 8
