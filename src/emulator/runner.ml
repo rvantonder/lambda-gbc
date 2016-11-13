@@ -11,8 +11,6 @@ open Bap.Std
 
 module SM = Monad.State
 
-let ref_tiles = ref [] (* XXX get rid of it later *)
-
 module Input_loop = struct
   open Lwt
   open LTerm_key
@@ -64,18 +62,6 @@ module Z80_interpreter_loop = struct
     Background.from_tile_list ?offset_y ?offset_x tiles lterm_ctxt |>
     Background.render
 
-  (** TODO: why if i raise exception here does it get ignored? *)
-  let draw ctxt ui matrix tiles =
-    let open LTerm_geom in
-    let size = LTerm_ui.size ui in
-    let lterm_ctxt = LTerm_draw.context matrix size in
-    (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
-      Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
-      (if size.rows < 289 || size.cols < 1430 then
-       raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-    LTerm_draw.clear lterm_ctxt;
-    draw_bg ctxt lterm_ctxt tiles
-
   let storage_of_context ctxt =
     let open Option in
     ctxt#lookup Z80_env.mem >>= fun result ->
@@ -83,15 +69,33 @@ module Z80_interpreter_loop = struct
     | Bil.Mem storage -> return storage
     | _ -> None
 
-  (* XXX mutable state! *)
-  let update_tiles_from_mem options ctxt =
+  let tiles_from_mem ctxt =
     let storage = storage_of_context ctxt in
-    let tiles = Screen.get_tiles options storage in
+    Screen.get_tiles storage
+    (*let tiles = Screen.get_tiles options storage in
     (match tiles with
      | Some tiles ->
        (*Screen.print_ascii_screen tiles;*)
        ref_tiles := tiles;
-     | None -> ())
+     | None -> ())*)
+
+  (** TODO: why if i raise exception here does it get ignored? *)
+  let draw draw_recv_stream ui matrix : unit =
+    let open LTerm_geom in
+    let ctxt = Lwt_stream.next draw_recv_stream in (* TODO: how to return unit when reading from lwt here? *)
+    Lwt.on_success ctxt (fun ctxt ->
+        printf "On_success_triggered";
+        match tiles_from_mem ctxt with
+        | Some tiles ->
+          let size = LTerm_ui.size ui in
+          let lterm_ctxt = LTerm_draw.context matrix size in
+          (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
+            Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
+            (if size.rows < 289 || size.cols < 1430 then
+             raise (Failure "I'm not going to continue drawing. Screen too small"));*)
+          LTerm_draw.clear lterm_ctxt;
+          draw_bg ctxt lterm_ctxt tiles
+        | None -> ())
 
   (** A request may be received while input is blocking (paused) or
       non-blocking. Everything stays the same, except:
@@ -132,7 +136,6 @@ module Z80_interpreter_loop = struct
       | Bp addr,_ ->
         ctxt#add_breakpoint addr
       | Render,_ ->
-        Format.printf "Attempting flail render\n%!";
         rrender ctxt;
         ctxt
       | Print Mem w,_ ->
@@ -195,14 +198,18 @@ module Z80_interpreter_loop = struct
       options ctxt
       image
       term
-      recv_stream =
+      cmd_recv_stream =
+
     let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_non_blking" in
 
+    (* Fuck mutable coords/ctxt*)
+    let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
+
     (** Create screen matrix. XXX mutable state *)
-    LTerm_ui.create term (fun ui matrix -> draw ctxt ui matrix !ref_tiles) >>= fun ui ->
+    LTerm_ui.create term (fun ui matrix -> draw draw_recv_stream ui matrix) >>= fun ui ->
 
     let rrender ctxt =
-      update_tiles_from_mem options ctxt;
+      draw_send_stream (Some ctxt);
       LTerm_ui.draw ui
     in
 
@@ -218,11 +225,11 @@ module Z80_interpreter_loop = struct
          LTerm_ui.draw ui);
 
       (** Non-blocking: handle input requests *)
-      (match Lwt_stream.get_available recv_stream with
+      (match Lwt_stream.get_available cmd_recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
          Lwt_log.debug ~section "Pause" >>= fun () ->
-         blocking_input_loop_on_pause recv_stream ctxt step_frame step_insn rrender
+         blocking_input_loop_on_pause cmd_recv_stream ctxt step_frame step_insn rrender
        | [rq] ->
          Lwt_log.debug_f ~section
            "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
@@ -232,7 +239,7 @@ module Z80_interpreter_loop = struct
          (** do not log here... empty polling *)
          (** Used to be step_frame, but i'm debugging *)
          (** If empty, steps an insn by default, next ctxt *)
-         step_frame ctxt |> return
+         step_insn ctxt |> return
        | _ ->
          Lwt_log.ign_fatal ~section "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"
@@ -324,6 +331,7 @@ let start_event_loop refresh_rate_frame options image =
   (*Lwt_log_core.add_rule "ev_*" Lwt_log_core.Debug;*)
   Lwt_log.default := logger;
 
+  (** Stream for sending/receiving commands *)
   let recv_stream, send_stream = Lwt_stream.create () in
 
   Lwt_log.debug "Starting event_loop" >>= fun () ->

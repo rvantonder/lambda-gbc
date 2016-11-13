@@ -148,7 +148,7 @@ let tiles_of_idxs storage base idxs =
    1: $9C00-$9FFF -> Map 1
 *)
 
-let get_tiles options storage =
+let get_tiles storage =
   let open Option in
   storage >>= fun storage ->
   let open Gbc_segment in
@@ -222,7 +222,7 @@ let get_tiles options storage =
    Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
    Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
 *)
-let get_tiles' options storage =
+let get_tiles' storage =
   match storage with
   | Some storage ->
     let open Gbc_segment in
@@ -293,5 +293,5 @@ let get_tiles' options storage =
     tiles'
   | None -> []
 
-let render options storage =
-  Render.run_lwt (get_tiles' options (Some storage))
+let render storage =
+  Render.run_lwt (get_tiles' (Some storage))

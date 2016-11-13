@@ -80,11 +80,15 @@ let decode_extended bytes pos cc =
   | [code;_;_] ->
     let reg = reg_from_code code in
     (match cb_insn_from_code code with
-     | `BIT | `RES | `SET as insn ->
+     | `BIT as insn ->
        let idx = idx_from_code code in
        (match reg with
-        | `HL -> ~> (insn,[!idx ; reg]) 2 16 (** TODO CLOCK IS WRONG
-                                                 FOR 0xCB. Should be 12 sometimes *)
+        | `HL -> ~> (insn,[!idx ; reg]) 2 12
+        | _ -> ~> (insn,[!idx ; reg]) 2 8)
+     | `RES | `SET as insn ->
+       let idx = idx_from_code code in
+       (match reg with
+        | `HL -> ~> (insn,[!idx ; reg]) 2 16
         | _ -> ~> (insn,[!idx ; reg]) 2 8)
      | `ROT ->
        let insn = decode_rot code in
@@ -92,6 +96,25 @@ let decode_extended bytes pos cc =
         | `HL -> ~> (insn,[reg]) 2 16
         | _ -> ~> (insn,[reg]) 2 8))
   | _ -> ~> (`Undef,[]) 1 0
+
+(** TIMINGS:
+
+    pandocs and GB manual disagree on some:
+
+    http://www.codeslinger.co.uk/pages/projects/gameboy/files/GB.pdf
+    http://bgb.bircd.org/pandocs.htm
+
+    e.g.
+
+    0xC3 JP : pandocs says 16. GB Manual says 12.
+    0xCD Call: pandocs says 24. GB Manual says 12.
+
+    This other reference http://www.devrs.com/gb/files/opcodes.html says
+         (corresponds with pandocs):
+         JP : 16 Call : 24
+
+    If this one corresponds to no$gmb, we will use it.
+*)
 
 (** I order by opcode number, rather than mnemonic, because I'm following
     GameBoyCore.js for correctness, rather than the http://www.z80.info/z80code.txt
@@ -153,7 +176,7 @@ let decode bytes pos cc =
   | [0x1D;_;_;_] -> ~> (`DEC, [ e ]) 1 4
   | [0x1E;x;_;_] -> ~> (`LD, [ e; !x ]) 2 8
   | [0x1F;_;_;_] -> ~> (`RRA, [ a; ]) 1 4
-  | [0x20;x;_;_] -> ~> (`JR, [`FNZ; !x]) 2 8
+  | [0x20;x;_;_] -> ~> (`JR, [`FNZ; !x]) 2 8 (* 8 if cc false, 12 if true*)
   | [0x21;x;y;_] -> ~> (`LD, [ hl; !y; !x]) 3 12
   | [0x22;x;y;_] -> ~> (`LD, [hl; !(1); a]) 1 8 (* special gbc LD (HLI),A *)
   | [0x23;_;_;_] -> ~> (`INC, [hl]) 1 8
@@ -161,7 +184,7 @@ let decode bytes pos cc =
   | [0x25;_;_;_] -> ~> (`DEC, [h]) 1 4
   | [0x26;x;_;_] -> ~> (`LD, [h; !x]) 2 8
   | [0x27;_;_;_] -> ~> (`DAA, [a]) 1 4
-  | [0x28;x;_;_] -> ~> (`JR, [`FZ; !x]) 2 8
+  | [0x28;x;_;_] -> ~> (`JR, [`FZ; !x]) 2 8 (* 8 if cc false, 12 if true*)
   | [0x29;_;_;_] -> ~> (`ADD, [hl ; hl]) 2 8
   | [0x2A;_;_;_] -> ~> (`LD, [a; hl; !(1)]) 1 8 (* special gbc LD A, (HLI) *)
   | [0x2B;_;_;_] -> ~> (`DEC, [hl]) 1 8
@@ -169,7 +192,7 @@ let decode bytes pos cc =
   | [0x2D;_;_;_] -> ~> (`DEC, [l]) 1 4
   | [0x2E;x;_;_] -> ~> (`LD, [l; !x]) 2 8
   | [0x2F;_;_;_] -> ~> (`CPL, [a]) 1 4
-  | [0x30;x;_;_] -> ~> (`JR, [!x]) 2 8
+  | [0x30;x;_;_] -> ~> (`JR, [!x]) 2 8 (* 8 if cc false, 12 if true*)
   | [0x31;x;y;_] -> ~> (`LD, [sp; !y; !x]) 3 12
   (* special gbc semantics: Save a at hl and decrement hl. I
      communicate this information by passing an immediate with this LD by
@@ -180,7 +203,7 @@ let decode bytes pos cc =
   | [0x35;_;_;_] -> ~> (`DEC, [hl]) 1 12
   | [0x36;x;_;_] -> ~> (`LD, [hl;!x]) 2 12
   | [0x37;x;_;_] -> ~> (`SCF, []) 1 4  (* CY = 1 *)
-  | [0x38;x;_;_] -> ~> (`JR, [!x]) 2 8 (* IF CY then PC+PC+x *)
+  | [0x38;x;_;_] -> ~> (`JR, [!x]) 2 8 (* 8 if cc false, 12 if true*) (* IF CY then PC+PC+x *)
   | [0x39;x;_;_] -> ~> (`ADD, [hl;sp]) 2 8
   | [0x3A;x;y;_] -> ~> (`LD, [a ; hl; !(-1)]) 1 8 (* special gbc LD A, (HLD) *)
   | [0x3B;_;_;_] -> ~> (`DEC, [sp]) 1 8
@@ -318,26 +341,26 @@ let decode bytes pos cc =
   | [0xBF;_;_;_] -> ~> (`CP, [a]) 1 4
   | [0xC0;_;_;_] -> ~> (`RET, [`FZ]) 1 8
   | [0xC1;_;_;_] -> ~> (`POP, [bc]) 1 12
-  | [0xC2;x;y;_] -> ~> (`JP, [`FZ; !y; !x]) 3 12
+  | [0xC2;x;y;_] -> ~> (`JP, [`FZ; !y; !x]) 3 12 (* 12 if cc false, 16 if true, http://www.devrs.com/gb/files/opcodes.html http://bgb.bircd.org/pandocs.htm *)
   | [0xC3;x;y;_] -> ~> (`JP, [!y; !x]) 3 16
-  | [0xC4;x;y;_] -> ~> (`JP, [`FZ; !y; !x]) 3 12
+  | [0xC4;x;y;_] -> ~> (`JP, [`FZ; !y; !x]) 3 12 (* 12 if cc false, 16 if true *)
   | [0xC5;_;_;_] -> ~> (`PUSH, [bc]) 1 16
   | [0xC6;x;_;_] -> ~> (`ADD, [bc; !x]) 2 8
   | [0xC7;_;_;_] -> ~> (`RST, [!0]) 1 16
   | [0xC8;_;_;_] -> ~> (`RET, [`FZ]) 1 8
   | [0xC9;_;_;_] -> ~> (`RET, []) 1 16
-  | [0xCA;x;y;_] -> ~> (`JP, [`FZ; !y; !x]) 3 12
+  | [0xCA;x;y;_] -> ~> (`JP, [`FZ; !y; !x]) 3 12 (* 12 if cc false, 16 if true *)
   (* secondary opcode set *)
   | 0xCB::tl -> decode_extended tl pos cc
-  | [0xCC;x;y;_] -> ~> (`CALL, [`FZ; !y; !x]) 3 12
+  | [0xCC;x;y;_] -> ~> (`CALL, [`FZ; !y; !x]) 3 12 (* 12 if cc false, 24 if true *)
   | [0xCD;x;y;_] -> ~> (`CALL, [!y; !x]) 3 24
   | [0xCE;x;_;_] -> ~> (`ADC, [a; !x]) 2 8
   | [0xCF;_;_;_] -> ~> (`RST, [!0x8]) 1 16
   | [0xD0;_;_;_] -> ~> (`RET, [`FC]) 1 8
   | [0xD1;_;_;_] -> ~> (`POP, [de]) 1 12
-  | [0xD2;x;y;_] -> ~> (`JP, [`FC; !y; !x]) 3 12
+  | [0xD2;x;y;_] -> ~> (`JP, [`FC; !y; !x]) 3 12 (* 12 if cc false, 16 if true *)
   | [0xD3;_;_;_] -> failwith "Illegal opcode 0xD3"
-  | [0xD4;x;y;_] -> ~> (`CALL, [`FC; !y; !x]) 3 12
+  | [0xD4;x;y;_] -> ~> (`CALL, [`FC; !y; !x]) 3 12 (* 12 if cc false, 24 if true *)
   | [0xD5;_;_;_] -> ~> (`PUSH, [de]) 1 16
   | [0xD6;x;_;_] -> ~> (`SUB, [a; !x]) 2 8
   | [0xD7;_;_;_] -> ~> (`RST, [!0x10]) 1 16
@@ -345,7 +368,7 @@ let decode bytes pos cc =
   | [0xD9;_;_;_] -> ~> (`RETI, []) 1 16
   | [0xDA;x;y;_] -> ~> (`PUSH, [`FC; !y; !x]) 3 12 (* JP FC, carry *)
   | [0xDB;_;_;_] -> failwith "Illegal opcode 0xDB"
-  | [0xDC;x;y;_] -> ~> (`CALL, [`FC]) 1 12 (* CALL FC, carry *)
+  | [0xDC;x;y;_] -> ~> (`CALL, [`FC]) 1 12  (* 12 if cc false, 24 if true *) (* CALL FC, carry *)
   | [0xDD;_;_;_] -> failwith
                       (sprintf "Illegal opcode 0xDD at 0x%x" pos)
   | [0xDE;x;_;_] -> ~> (`SBC, [a; !x]) 2 8

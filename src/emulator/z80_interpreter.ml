@@ -239,7 +239,7 @@ class context image options = object(self : 's)
     printf "│%s %4s%8s|\n%!" (!CPU.sp) " " " ";
     printf "│PC=%s %4s%8s|\n%!" (to_imm8 self#pc) " " " ";
     printf "|k=0x%04x %4s%8s|\n%!" self#k " " " ";
-    printf "|clock=0x%04x %4s%8s|\n%!" self#cpu_clock " " " ";
+    printf "|clock=%04d %4s%8s|\n%!" (self#cpu_clock/4) " " " ";
     printf "└%s┘\n%!" "----------------------";
 
 
@@ -419,6 +419,6 @@ let render options ctxt =
      | Bil.Mem storage ->
        (*Z80_image.dump_vram storage*)
        if options.no_render then return ()
-       else Screen.render options storage
+       else Screen.render storage
      | _ -> return ())
   | _ -> return ()
