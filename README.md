@@ -18,7 +18,12 @@ To RENDER ON DEMAND wtih `step_insn`:
 
 ### TODO: different timings depending on jump success
 
-other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/projects/gameboy/files/GB.pdf
+Cycles are different only for conditional jump, conditional relative jump, and calls.
+
+I only lift conditional relative jump now (only one with type #Cond.t), and that is enough to boot. So
+let's get the boot up correct.
+
+
 
 --------------------------------------
 
