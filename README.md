@@ -1,27 +1,52 @@
 # IMPORTANT!!!
 
-To RENDER:
+To RENDER with `step_frame`:
 
+* Zoom out FIRST, all the way, and zoom in ONCE.
 * ./driver.native --bootrom --speed 0.0
-* Zoom out all the way, and zoom in ONCE.
+* THEN RESUME
 * `step_frame` on empty requests in loop for FAST
 
-For debugging:
+To RENDER ON DEMAND wtih `step_insn`: 
 
-specify no render: much faster execution.
-
-* `./driver.native --bootrom --nr --speed 0.0`
-* `step_insn` in loop for no req
+* Zoom out FIRST, all the way, and zoom in ONCE.
+* `./driver.native --bootrom --nr --speed 0.0` ; use no-render, much faster execution
+* `(bp 0xf9)`
+* resume
+* wait
+* render
 
 ### TODO: different timings depending on jump success
 
-other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/projects/gameboy/files/GB.pdf
+Cycles are different only for conditional jump, conditional relative jump, and calls.
+
+I only lift conditional relative jump now (only one with type #Cond.t), and that is enough to boot. So
+let's get the boot up correct.
+
+### TODO: decoder should have a decode function (mli) without needing continuation
+
+
 
 --------------------------------------
 
-### Interactive debugger: separate window with reg updates like GDB
-### RRender interactive
-### Remote debug over stdin/network. May fix screen shit.
+### Interactive debugger: separate window with reg updates like GDB -- use widges/OO part of lterm
+### RRender interactive -- works.
+### Remote debug over stdin/network. May fix screen shit. -- use lterm and matrix w/ stdin/stdout?
+###     rewrite pattern matching to use this opcode knowledge:      http://www.z80.info/decoding.htm  
+
+--------------------------------------
+
+How I could debug with no$gmb:
+
+Window -> IOMap shows clock countdown to vblank and clock count up with trace.
+
+Two problems: count up only shows `>64K` at some point AND I can't find the value in memory with art money to reset it to 0. F'ed.
+
+But! I can track the countdown vblank clock with artmoney. I can also set it to like, 1000000. Problem: IOMap window then
+displays `>64k`. No matter! Artmoney still shows me the value as its decrementing. Now I can count clocks. Yes.
+
+How to track it with art money? Hit search and start with the number. Then interact with program. Then filter for the number
+you expect next.
 
 --------------------------------------
 
