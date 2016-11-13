@@ -28,6 +28,17 @@ other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/project
 
 --------------------------------------
 
+How I could debug with no$gmb:
+
+Window -> IOMap shows clock countdown to vblank and clock count up with trace.
+
+Two problems: count up only shows `>64K` at some point AND I can't find the value in memory with art money to reset it to 0. F'ed.
+
+But! I can track the countdown vblank clock with artmoney. I can also set it to like, 1000000. Problem: IOMap window then
+displays `>64k`. No matter! Artmoney still shows me the value as its decrementing. Now I can count clocks. Yes.
+
+--------------------------------------
+
 possible optimization:
 
 make `rrender` work every 10k steps
