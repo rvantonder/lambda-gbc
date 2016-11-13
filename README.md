@@ -25,6 +25,7 @@ other than that, opcodes are correct: http://www.codeslinger.co.uk/pages/project
 ### Interactive debugger: separate window with reg updates like GDB -- use widges/OO part of lterm
 ### RRender interactive -- works.
 ### Remote debug over stdin/network. May fix screen shit. -- use lterm and matrix w/ stdin/stdout?
+###     rewrite pattern matching to use this opcode knowledge:      http://www.z80.info/decoding.htm  
 
 --------------------------------------
 
