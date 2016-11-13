@@ -23,6 +23,8 @@ Cycles are different only for conditional jump, conditional relative jump, and c
 I only lift conditional relative jump now (only one with type #Cond.t), and that is enough to boot. So
 let's get the boot up correct.
 
+### TODO: decoder should have a decode function (mli) without needing continuation
+
 
 
 --------------------------------------
