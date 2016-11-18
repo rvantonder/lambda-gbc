@@ -12,6 +12,9 @@ class context : Z80_image.t -> Options.t -> object('s)
 
     method addrs : Bitvector.Set.t
     method advance : 's
+    (* XXX : cpu_clock @ 2**32 is only big enough to count up to 16 minutes
+       worth of execution: (2**32/(70221*60))/60 = 16.98. 64k int will get us
+       ~138k years. *)
     method cpu_clock : int
     method decode : 's
     method mem_at_addr : addr -> word option

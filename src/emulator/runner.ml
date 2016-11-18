@@ -84,7 +84,6 @@ module Z80_interpreter_loop = struct
     let open LTerm_geom in
     let ctxt = Lwt_stream.next draw_recv_stream in (* TODO: how to return unit when reading from lwt here? *)
     Lwt.on_success ctxt (fun ctxt ->
-        printf "On_success_triggered";
         match tiles_from_mem ctxt with
         | Some tiles ->
           let size = LTerm_ui.size ui in
@@ -194,13 +193,15 @@ module Z80_interpreter_loop = struct
   let run
       step_insn
       step_frame
-      refresh_rate_frame
       options ctxt
       image
       term
-      cmd_recv_stream =
+      cmd_recv_stream
+      may_continue
+    =
 
-    let section = Lwt_log.Section.make "ev_dbg_rq_rcv_in_non_blking" in
+    let section_dbg = Lwt_log.Section.make "ev_dbg_rq_rcv_in_non_blking" in
+    let section_cycles = Lwt_log.Section.make "cycles" in
 
     (* Fuck mutable coords/ctxt*)
     let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
@@ -213,9 +214,11 @@ module Z80_interpreter_loop = struct
       LTerm_ui.draw ui
     in
 
-    let rec loop ui ctxt count =
+    (* TODO: later, we will make sure to call update at 60Hz *)
+    let rec update ui ctxt cycles_done =
       let open Debugger_types.Request in
-      Lwt_log.debug ~section "MODE ACTIVE: NON-BLOCKING" >>= fun () ->
+      Lwt_log.debug ~section:section_dbg "MODE ACTIVE: NON-BLOCKING"
+      >>= fun () ->
 
       (** Render: Set tiles from memory *)
       (* Hack: only render ever 10k steps *)
@@ -228,10 +231,11 @@ module Z80_interpreter_loop = struct
       (match Lwt_stream.get_available cmd_recv_stream with
        | [Pause] ->
          (** Enter blocking input mode for stream *)
-         Lwt_log.debug ~section "Pause" >>= fun () ->
-         blocking_input_loop_on_pause cmd_recv_stream ctxt step_frame step_insn rrender
+         Lwt_log.debug ~section:section_dbg "Pause" >>= fun () ->
+         blocking_input_loop_on_pause
+           cmd_recv_stream ctxt step_frame step_insn rrender
        | [rq] ->
-         Lwt_log.debug_f ~section
+         Lwt_log.debug_f ~section:section_dbg
            "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
          handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
        | [] ->
@@ -241,33 +245,54 @@ module Z80_interpreter_loop = struct
          (** If empty, steps an insn by default, next ctxt *)
          step_insn ctxt |> return
        | _ ->
-         Lwt_log.ign_fatal ~section "Do not handle more than one event!";
+         Lwt_log.ign_fatal ~section:section_dbg
+           "Do not handle more than one event!";
          failwith "Bad: more than one rq in queue"
       ) >>= fun ctxt' ->
 
-      (** Sleep *)
-      Lwt_unix.sleep refresh_rate_frame >>= fun _ ->
-      loop ui ctxt' (count + 1) in
+      let cycles_done =
+        cycles_done + (ctxt'#cpu_clock - ctxt#cpu_clock) in
 
-    loop ui ctxt 0
+      if cycles_done >= 70244
+      (* may_continue is a synchronising variable. We put something into
+         may_continue at 60hz, and when that something is there, this loop
+         can continue. If there's nothing there, it has to block and wait *)
+      then
+        Lwt_log.debug ~section:section_cycles @@
+        sprintf "Waiting. Cycles: %d" cycles_done >>= fun _ ->
+        Lwt_mvar.take may_continue >>= fun _ ->
+        update ui ctxt' (cycles_done - 70244)
+        (* XXX : waiting stops the whole debug loop. another reason
+           to pull it out *)
+        (* not 0, but including the cycles if we went past *)
+      else
+        Lwt_log.debug ~section:section_cycles @@
+        sprintf "Cycles: %d" cycles_done
+        >>= fun _ ->
+        update ui ctxt' cycles_done
+    in
+
+    update ui ctxt 0
 end
 
 let set_up_input_loop term send_stream =
   Input_loop.run term (LTerm_history.create []) send_stream
 
-let set_up_base_interp_loop
+(** Later, recv_stream here will be input *)
+let create_base_interp_loop
     interp
     ctxt
-    refresh_rate_frame
     options
     image
     term
-    recv_stream =
+    recv_stream
+    may_continue
+  =
 
   let step_frame ctxt = SM.exec interp#step_frame ctxt in
   let step_insn ctxt = SM.exec interp#step_insn ctxt in
-  Z80_interpreter_loop.run step_insn step_frame refresh_rate_frame options ctxt
-    image term recv_stream
+  Z80_interpreter_loop.run step_insn step_frame options ctxt
+    image term recv_stream may_continue
 
 let i16 = Word.of_int ~width:16
 
@@ -300,8 +325,9 @@ let i16 = Word.of_int ~width:16
     can issue requests such as "Pause" when a breakpoint is hit. Worth asking if
     it should have its own debug stream.
 *)
-let set_up_debug_interp_loop refresh_rate_frame options
-    image term recv_stream send_stream =
+let set_up_debug_interp_loop options
+    image term recv_stream send_stream
+  may_continue =
 
   let interp =
     new Z80_interpreter_debugger.z80_interpreter_debugger image options
@@ -317,8 +343,8 @@ let set_up_debug_interp_loop refresh_rate_frame options
 
   let ctxt = Monad.State.exec start ctxt in
 
-  set_up_base_interp_loop
-    interp ctxt refresh_rate_frame options image term recv_stream
+  create_base_interp_loop
+    interp ctxt options image term recv_stream may_continue
 
 
 let start_event_loop refresh_rate_frame options image =
@@ -342,8 +368,15 @@ let start_event_loop refresh_rate_frame options image =
   (* If debugging is enabled, pause NOW *)
   send_stream (Some Debugger_types.Request.Pause);
 
-  let interp_loop = set_up_debug_interp_loop refresh_rate_frame
-      options image term recv_stream send_stream in
+ let may_continue = Lwt_mvar.create () in
+ (* for testing. take the variable so later thread
+doesn't have opportunity to continue*)
+ Lwt_mvar.take may_continue |> fun r -> Lwt.on_termination r ident;
+
+  (*let timer_loop = () (* TODO *) in*)
+
+  let interp_loop = set_up_debug_interp_loop
+      options image term recv_stream send_stream may_continue in
 
   let input_loop = set_up_input_loop term send_stream in
 

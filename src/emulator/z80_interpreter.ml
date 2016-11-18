@@ -149,7 +149,7 @@ class context image options = object(self : 's)
   (** Number of instructions executed *)
   val k = 0
 
-  (** Number of clock cycles *)
+  (** Total number of clock cycles *)
   val cpu_clock = 0
 
   method cpu_clock = cpu_clock
