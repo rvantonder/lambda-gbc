@@ -170,9 +170,9 @@ class context image options = object(self : 's)
   method inc_k = {< k = k + 1>}
 
   method private value_to_word =
-      function
-      | Bil.Imm w -> Some w
-      | _ -> None
+     function
+     | Bil.Imm w -> Some w
+     | _ -> None
 
   method read_reg reg =
     let to_value bil_result =
@@ -235,7 +235,16 @@ class context image options = object(self : 's)
     | Bil.Mem storage -> storage#load addr
     | _ -> None
 
-  (** Note that lookup can also be done in interpreter, and it returns 'a r *)
+  method write_word addr word =
+    let open Option in
+    self#lookup (Z80_env.mem) >>= fun result ->
+    match Bil.Result.value result with
+    | Bil.Mem storage ->
+      let ctxt',_ = self#create_storage (storage#save addr word) in
+      Some ctxt'
+    | _ -> None
+
+ (** Note that lookup can also be done in interpreter, and it returns 'a r *)
   method dump_ram =
     match self#lookup (Z80_env.mem) with
     | Some result ->
@@ -380,7 +389,7 @@ class ['a] z80_interpreter image options = object(self)
     put (ctxt#save_addr addr) >>= fun () ->
     return r
 
-  method! load storage addr =
+ method! load storage addr =
     if options.di then
       printf "Entering load!\n%!";
     super#load storage addr >>= fun r ->

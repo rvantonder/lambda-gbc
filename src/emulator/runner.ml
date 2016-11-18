@@ -188,6 +188,26 @@ module Z80_interpreter_loop = struct
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
 
+  let handle_debug_rq_or_continue cmd_recv_stream section_dbg ctxt step_frame step_insn
+      rrender =
+    let open Debugger_types.Request in
+    match Lwt_stream.get_available cmd_recv_stream with
+    | [Pause] ->
+      (** Enter blocking input mode for stream *)
+      Lwt_log.debug ~section:section_dbg "Pause" >>= fun () ->
+      blocking_input_loop_on_pause
+        cmd_recv_stream ctxt step_frame step_insn rrender
+    | [rq] ->
+      Lwt_log.debug_f ~section:section_dbg
+        "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
+      handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
+    | [] -> return (step_insn ctxt)
+    | _ ->
+      Lwt_log.ign_fatal ~section:section_dbg
+        "Do not handle more than one event!";
+      failwith "Bad: more than one rq in queue"
+
+
   (** Design: the interpreter can only be advanced by step_insn and step_frame
       in run. Nothing else about the interpreter is exposed *)
   let run
@@ -216,42 +236,19 @@ module Z80_interpreter_loop = struct
 
     (* TODO: later, we will make sure to call update at 60Hz *)
     let rec update ui ctxt cycles_done =
-      let open Debugger_types.Request in
       Lwt_log.debug ~section:section_dbg "MODE ACTIVE: NON-BLOCKING"
       >>= fun () ->
 
-      (** Render: Set tiles from memory *)
-      (* Hack: only render ever 10k steps *)
-      (*if count mod 10000 = 0 then*)
-      if not options.no_render then
-        (rrender ctxt;
-         LTerm_ui.draw ui);
-
-      (** Non-blocking: handle input requests *)
-      (match Lwt_stream.get_available cmd_recv_stream with
-       | [Pause] ->
-         (** Enter blocking input mode for stream *)
-         Lwt_log.debug ~section:section_dbg "Pause" >>= fun () ->
-         blocking_input_loop_on_pause
-           cmd_recv_stream ctxt step_frame step_insn rrender
-       | [rq] ->
-         Lwt_log.debug_f ~section:section_dbg
-           "%s" @@ Debugger_types.Request.to_string rq >>= fun () ->
-         handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
-       | [] ->
-         Lwt_log.debug ~section:Lwt_log.Section.main "step" >>= fun () ->
-         (** do not log here... empty polling *)
-         (** Used to be step_frame, but i'm debugging *)
-         (** If empty, steps an insn by default, next ctxt *)
-         step_insn ctxt |> return
-       | _ ->
-         Lwt_log.ign_fatal ~section:section_dbg
-           "Do not handle more than one event!";
-         failwith "Bad: more than one rq in queue"
-      ) >>= fun ctxt' ->
-
+      (* Non-blocking: handle input requests, or step *)
+      handle_debug_rq_or_continue cmd_recv_stream section_dbg ctxt step_frame
+        step_insn
+        rrender
+      >>= fun ctxt' ->
       let cycles_done =
         cycles_done + (ctxt'#cpu_clock - ctxt#cpu_clock) in
+
+
+      Gpu.update ctxt' cycles_done |> ignore;
 
       if cycles_done >= 70244
       (* may_continue is a synchronising variable. We put something into

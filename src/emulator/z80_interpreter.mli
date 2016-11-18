@@ -10,6 +10,8 @@ class context : Z80_image.t -> Options.t -> object('s)
     method current_hunk : Z80_disassembler.Hunk.t
     method print_cpu : unit
 
+    (** addrs tracks the addrs we have values for in memory.
+        This is so that we can economically print sparse memory *)
     method addrs : Bitvector.Set.t
     method advance : 's
     (* XXX : cpu_clock @ 2**32 is only big enough to count up to 16 minutes
@@ -18,6 +20,10 @@ class context : Z80_image.t -> Options.t -> object('s)
     method cpu_clock : int
     method decode : 's
     method mem_at_addr : addr -> word option
+    (* Use with caution! This is only to increment scanline of GPU, for
+       example. Everything else should go through the standard store/load
+       api of interpreter which we can catch *)
+    method write_word : addr -> word -> 's option
     method read_reg : var -> word option
     method dump_ram : unit
     method dump_vram : unit
