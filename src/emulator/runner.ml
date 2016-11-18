@@ -211,6 +211,7 @@ module Z80_interpreter_loop = struct
   (** Design: the interpreter can only be advanced by step_insn and step_frame
       in run. Nothing else about the interpreter is exposed *)
   let run
+      interp
       step_insn
       step_frame
       options ctxt
@@ -244,11 +245,10 @@ module Z80_interpreter_loop = struct
         step_insn
         rrender
       >>= fun ctxt' ->
-      let cycles_done =
-        cycles_done + (ctxt'#cpu_clock - ctxt#cpu_clock) in
+      let cycles_delta = ctxt'#cpu_clock - ctxt#cpu_clock in
+      let cycles_done = cycles_done + cycles_delta in
 
-
-      Gpu.update ctxt' cycles_done |> ignore;
+      Gpu.update interp ctxt' cycles_delta |> fun ctxt' ->
 
       if cycles_done >= 70244
       (* may_continue is a synchronising variable. We put something into
@@ -288,7 +288,7 @@ let create_base_interp_loop
 
   let step_frame ctxt = SM.exec interp#step_frame ctxt in
   let step_insn ctxt = SM.exec interp#step_insn ctxt in
-  Z80_interpreter_loop.run step_insn step_frame options ctxt
+  Z80_interpreter_loop.run interp step_insn step_frame options ctxt
     image term recv_stream may_continue
 
 let i16 = Word.of_int ~width:16

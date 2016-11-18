@@ -111,7 +111,7 @@ class memory image options : Bil.storage = object(self : 's)
       (match position with
        (* XXX Hard-code LY to pass scanline wait check.
           0x90 = 144, the last row *)
-       | 0xFF44 -> Some (i8 0x90)
+       (*| 0xFF44 -> Some (i8 0x90)*)
        | _ -> None)
     | [|v|] ->
       Some (i8 (UInt8.to_int v))
@@ -238,11 +238,39 @@ class context image options = object(self : 's)
   method write_word addr word =
     let open Option in
     self#lookup (Z80_env.mem) >>= fun result ->
+    let section = Lwt_log.Section.make "gpu" in
+    Lwt_log.ign_debug_f ~section "%s" "have result in write_word";
     match Bil.Result.value result with
     | Bil.Mem storage ->
-      let ctxt',_ = self#create_storage (storage#save addr word) in
+      Lwt_log.ign_debug_f ~section "%s" "got mem";
+      let s' = storage#save addr word in
+      (match s'#load addr with
+        | Some v -> Lwt_log.ign_debug_f ~section
+                      "checking addr %s. it has value %s"
+                      (sprintf "%a" Word.pps addr)
+                      (sprintf "%a" Word.pps v)
+        | None ->  Lwt_log.ign_debug_f ~section "NADA");
+      let ctxt = self#save_addr addr in
+      let ctxt',r = ctxt#create_storage s' in
+      (*(match ctxt'#lookup (Z80_env.mem) with*)
+      (match Some r with
+       | Some result ->
+         (match Bil.Result.value result with
+         | Bil.Mem st ->
+           (match st#load addr with
+            | Some v -> Lwt_log.ign_debug_f ~section
+                      "checking CTXT' addr %s. it has value %s"
+                      (sprintf "%a" Word.pps addr)
+                      (sprintf "%a" Word.pps v)
+            | None ->  Lwt_log.ign_debug_f ~section "NADA")
+         | _ -> ()
+         )
+       | None -> ()
+      );
       Some ctxt'
-    | _ -> None
+    | _ ->
+      Lwt_log.ign_debug_f ~section "%s" "wtf";
+      None
 
  (** Note that lookup can also be done in interpreter, and it returns 'a r *)
   method dump_ram =
