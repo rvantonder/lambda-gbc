@@ -17,6 +17,13 @@ To RENDER ON DEMAND wtih `step_insn`:
 * render
 
 
+### GPU:
+
+problem, we need to update scanline in memory (FF44). But the only interface to write to storage is through interpreter `store`. We cannot write to storage from ctxt. We can load, and we can call save, but calling save returns a storage which we cannot update context with. 
+
+
+It looks like base class exp contains `create_storage`.
+
 ### LCD
 
 I need to write the scanline to 0xFF44 (using GPU module), otherwise there's never any 'waiting' before rendering.
