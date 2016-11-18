@@ -16,12 +16,34 @@ To RENDER ON DEMAND wtih `step_insn`:
 * wait
 * render
 
-### TODO: different timings depending on jump success
 
-Cycles are different only for conditional jump, conditional relative jump, and calls.
+### GPU:
 
-I only lift conditional relative jump now (only one with type #Cond.t), and that is enough to boot. So
-let's get the boot up correct.
+problem, we need to update scanline in memory (FF44). But the only interface to write to storage is through interpreter `store`. We cannot write to storage from ctxt. We can load, and we can call save, but calling save returns a storage which we cannot update context with. 
+
+
+It looks like base class exp contains `create_storage`.
+
+### LCD
+
+I need to write the scanline to 0xFF44 (using GPU module), otherwise there's never any 'waiting' before rendering.
+
+http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html
+
+I also need to implement interrupts properly or some games won't work
+
+http://www.codeslinger.co.uk/pages/projects/gameboy/interupts.html
+
+the vblank interrupt, when implementing correctly, should trigger 60 times a second.
+
+
+Sometimes rendering logic code says:
+
+"I won't continue until you've told me that you rendered the last scan line"
+
+The GPU is running all the time and renders every 70244 seconds. But sometimes the
+game is waiting on it... to set the last scan line properly. 
+
 
 ### TODO: decoder should have a decode function (mli) without needing continuation
 
