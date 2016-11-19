@@ -20,7 +20,12 @@ let clean_state =
       | Type.Imm 16 -> (v := i16 0)::stmts (* reg16_t *)
       | Type.Imm 1  -> (v := false_)::stmts (* bool_t *)
       | _ -> failwith "reg is not of type reg8_t, reg16_t or flag.")
-  |> fun stmts -> stmts @ [CPU.mem := store_ 0xFF44 0x00] (* also init lcdc*)
+  |> fun stmts -> stmts @ [
+      (* LCD must be enabled *)
+      CPU.mem := store_ 0xFF40 0x91;
+      (* We read from LY in GPU using option types. must be initialized *)
+      CPU.mem := store_ 0xFF44 0x00
+    ]
 
   let ready_state =
     let open Bil in

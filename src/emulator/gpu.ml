@@ -10,37 +10,116 @@ let scanline_counter = ref 456
 (** FF44 - LY - LCDC Y-Coordinate (R)
 *)
 
-let test_fake_read_of_ctxt' ctxt =
-  let ly = Addr.of_int ~width:16 0xFF44 in
-  match ctxt#mem_at_addr ly with
-  | Some currentline -> log_gpu @@
-    sprintf "DEBUG update: %a" Word.pps currentline
-  | None -> failwith "Bad try"
+let w = Word.of_int ~width:8
 
-  let w = Word.of_int ~width:8
+let test_bit v bit_pos =
+  let mask = Word.(w 1 lsl w bit_pos) in
+  (*log_gpu @@ sprintf "mask: %a v: %a" Word.pps mask Word.pps v;*)
+  Word.(mask land v) = Word.(w 1 lsl w bit_pos)
+
+let set_bit v bit_pos =
+  let mask = Word.(w 1 lsl w bit_pos) in
+  Word.(mask lor v)
+
+let reset_bit v bit_pos =
+  let mask = Word.(w 1 lsl w bit_pos) in
+  Word.(mask land (lnot v))
+
+(* TODO: initial lcd enabled is 3E. should i be servicing some
+   interrupt first? *)
+let is_lcd_enabled ctxt =
+  let open Option in
+  match ctxt#mem_at_addr (w 0xFF40) with
+  | Some lcd_byte -> test_bit lcd_byte 7
+  | None -> false
+
+(* TODO remove interp *)
+let write_word addr w (ctxt : Z80_interpreter_debugger.context) interp :
+Z80_interpreter_debugger.context option =
+  let open Option in
+  let open Z80_cpu.CPU in
+  let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
+      ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
+  let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
+  ctxt#lookup (Z80_env.mem) >>= fun result ->
+  match Bil.Result.value result with
+  | Bil.Mem storage ->
+    let start = interp#eval stmt in
+    (* TODO may need other interp so things dont get caught later *)
+    let ctxt' = Monad.State.exec start ctxt in
+    Some ctxt'
+  | _ -> None
+
+let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
+  Z80_interpreter_debugger.context option =
+  let open Option in
+  ctxt#mem_at_addr (w 0xFF41) >>= fun lcdstatus ->
+  match is_lcd_enabled ctxt with
+  | false ->
+    (*set the mode to 1 during lcd disabled and reset scanline*)
+    scanline_counter := 456;
+    let ly = Addr.of_int ~width:16 0xFF44 in
+    write_word ly (w 0) ctxt interp >>= fun ctxt' ->
+    let status' = Word.(lcdstatus land w 252) in
+    let status' = set_bit status' 0 in
+    write_word (w 0xFF41) status' ctxt' interp
+  | true ->
+    let ly = Addr.of_int ~width:16 0xFF44 in
+    ctxt#mem_at_addr ly >>= fun currentline ->
+    let current_mode = Word.(lcdstatus land w 3) in
+    let mode,status',reqint =
+      if currentline >= w 144 then
+        let status' = set_bit lcdstatus 0 in
+        let status' = reset_bit status' 1 in
+        let reqint = test_bit status' 4 in
+        1,status',reqint
+      else
+        let mode2bounds = 456-80 in
+        let mode3bounds = mode2bounds-172 in
+        if !scanline_counter >= mode2bounds then
+          let status' = set_bit lcdstatus 1 in
+          let status' = reset_bit status' 0 in
+          let reqint = test_bit status' 5 in
+          2,status',reqint
+        else if !scanline_counter >= mode3bounds then
+          let status' = set_bit lcdstatus 1 in
+          let status' = set_bit status' 0 in
+          3,status',false
+        else
+          let status' = reset_bit lcdstatus 1 in
+          let status' = reset_bit status' 0 in
+          let reqint = test_bit status' 3 in
+          0,status',reqint
+    in
+    (*just entered a new mode so request interupt*)
+    match reqint && (not (w mode = current_mode)) with
+    | true -> (* TODO request interrupt *)
+      write_word (w 0xFF41) status' ctxt interp
+    | false ->
+      ctxt#mem_at_addr (w 0xFF45) >>= fun coincidence_flag ->
+      let status' =
+        if coincidence_flag = currentline then
+          let status' = set_bit status' 2 in
+          if test_bit status' 6 then ();
+          (*TODO request interrupt *)
+          status'
+        else
+          reset_bit status' 2
+      in
+      write_word (w 0xFF41) status' ctxt interp
 
 (* TODO: fixup typing on debugger versus normal itnerpreter *)
+(*http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings*)
 let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
   let open Option in
-  (* TODO set LCD status *)
-  let lcd_enabled = true in
 
-  let write_word addr w ctxt =
-    let open Z80_cpu.CPU in
-    let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
-        ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
-    let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
-    ctxt#lookup (Z80_env.mem) >>= fun result ->
-    match Bil.Result.value result with
-    | Bil.Mem storage ->
-      let start = interp#eval stmt in
-      (* TODO may need other interp so things dont get caught later *)
-      let ctxt' = Monad.State.exec start ctxt in
-      test_fake_read_of_ctxt' ctxt';
-      Some ctxt'
-    | _ -> None in
+  (set_lcd_status ctxt interp >>= fun ctxt ->
 
-  (if lcd_enabled then
+   (*let lcd_enabled = is_lcd_enabled ctxt in *) (* TODO *)
+   let lcd_enabled = true in
+   log_gpu @@ sprintf "lcd enabled : %b" lcd_enabled;
+
+   if lcd_enabled then
      (
        scanline_counter := !scanline_counter - cycles;
        log_gpu @@ sprintf "subtracting %d scanline counter: %d"
@@ -56,7 +135,7 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
          (scanline_counter := 456;
           log_gpu "scanline counter set to 456";
           log_gpu "incrementing current scanline";
-          write_word ly Word.(currentline + w 1) ctxt (* inc scanline*)
+          write_word ly Word.(currentline + w 1) ctxt interp (* inc scanline*)
           >>= fun ctxt' ->
           log_gpu "Have fresh ctxt'";
           if currentline = w 144 then
@@ -66,10 +145,9 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
             (log_gpu @@ sprintf
                "currentline %a past scanline 153, resetting 0"
                Word.pps currentline;
-             write_word ly (w 0) ctxt)
+             write_word ly (w 0) ctxt interp)
           else if currentline < w 144 then
             (log_gpu @@ sprintf "drawing scanline %a" Word.pps currentline;
-             test_fake_read_of_ctxt' ctxt';
              return ctxt') (* todo draw scanline*)
           else
             (log_gpu "no gpu update, returning ctxt'";
