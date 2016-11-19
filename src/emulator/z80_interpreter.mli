@@ -23,7 +23,6 @@ class context : Z80_image.t -> Options.t -> object('s)
     (* Use with caution! This is only to increment scanline of GPU, for
        example. Everything else should go through the standard store/load
        api of interpreter which we can catch *)
-    method write_word : addr -> word -> 's option
     method read_reg : var -> word option
     method dump_ram : unit
     method dump_vram : unit

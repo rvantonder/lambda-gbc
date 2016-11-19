@@ -6,6 +6,21 @@ open Format
 open Gbc_segment
 open Options
 
+let w = Word.of_int ~width:8
+
+let test_bit v bit_pos =
+  let mask = Word.(w 1 lsl w bit_pos) in
+  (*log_gpu @@ sprintf "mask: %a v: %a" Word.pps mask Word.pps v;*)
+  Word.(mask land v) = Word.(w 1 lsl w bit_pos)
+
+let set_bit v bit_pos =
+  let mask = Word.(w 1 lsl w bit_pos) in
+  Word.(mask lor v)
+
+let reset_bit v bit_pos =
+  let mask = Word.(w 1 lsl w bit_pos) in
+  Word.(mask land (lnot v))
+
 let time tag f options =
   let t = Unix.gettimeofday () in
   let res = Lazy.force f in

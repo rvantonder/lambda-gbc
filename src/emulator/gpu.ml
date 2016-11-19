@@ -1,5 +1,6 @@
 open Core_kernel.Std
 open Bap.Std
+open Util
 
 let log_gpu s =
   let section = Lwt_log.Section.make "gpu" in
@@ -9,21 +10,6 @@ let scanline_counter = ref 456
 
 (** FF44 - LY - LCDC Y-Coordinate (R)
 *)
-
-let w = Word.of_int ~width:8
-
-let test_bit v bit_pos =
-  let mask = Word.(w 1 lsl w bit_pos) in
-  (*log_gpu @@ sprintf "mask: %a v: %a" Word.pps mask Word.pps v;*)
-  Word.(mask land v) = Word.(w 1 lsl w bit_pos)
-
-let set_bit v bit_pos =
-  let mask = Word.(w 1 lsl w bit_pos) in
-  Word.(mask lor v)
-
-let reset_bit v bit_pos =
-  let mask = Word.(w 1 lsl w bit_pos) in
-  Word.(mask land (lnot v))
 
 (* TODO: initial lcd enabled is 3E. should i be servicing some
    interrupt first? *)
@@ -50,6 +36,7 @@ Z80_interpreter_debugger.context option =
     Some ctxt'
   | _ -> None
 
+(*http://www.codeslinger.co.uk/pages/projects/gameboy/lcd.html*)
 let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
   Z80_interpreter_debugger.context option =
   let open Option in
@@ -93,19 +80,25 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
     in
     (*just entered a new mode so request interupt*)
     match reqint && (not (w mode = current_mode)) with
-    | true -> (* TODO request interrupt *)
+    | true ->
+      Interrupts.request interp ctxt 1 >>= fun ctxt ->
       write_word (w 0xFF41) status' ctxt interp
     | false ->
       ctxt#mem_at_addr (w 0xFF45) >>= fun coincidence_flag ->
-      let status' =
+      let status',ctxt' =
         if coincidence_flag = currentline then
           let status' = set_bit status' 2 in
-          if test_bit status' 6 then ();
-          (*TODO request interrupt *)
-          status'
+          let ctxt' =
+            if test_bit status' 6 then
+              Interrupts.request interp ctxt 1
+            else
+              Some ctxt
+          in
+          status',ctxt'
         else
-          reset_bit status' 2
+          reset_bit status' 2,Some ctxt
       in
+      ctxt' >>= fun ctxt' ->
       write_word (w 0xFF41) status' ctxt interp
 
 (* TODO: fixup typing on debugger versus normal itnerpreter *)
@@ -140,7 +133,7 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
           log_gpu "Have fresh ctxt'";
           if currentline = w 144 then
             (log_gpu "request vblank interrupt";
-             return ctxt') (* todo request interrupt *)
+             Interrupts.request interp ctxt' 0)
           else if currentline > w 153 then
             (log_gpu @@ sprintf
                "currentline %a past scanline 153, resetting 0"
