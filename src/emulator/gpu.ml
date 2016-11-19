@@ -49,6 +49,7 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
     write_word ly (w 0) ctxt interp >>= fun ctxt' ->
     let status' = Word.(lcdstatus land w 252) in
     let status' = set_bit status' 0 in
+    log_gpu "LCD disabled. Reset scanline and set mode to 1";
     write_word (w 0xFF41) status' ctxt' interp
   | true ->
     let ly = Addr.of_int ~width:16 0xFF44 in
@@ -59,6 +60,7 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
         let status' = set_bit lcdstatus 0 in
         let status' = reset_bit status' 1 in
         let reqint = test_bit status' 4 in
+        log_gpu "LCD set mode to 1";
         1,status',reqint
       else
         let mode2bounds = 456-80 in
@@ -67,34 +69,43 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
           let status' = set_bit lcdstatus 1 in
           let status' = reset_bit status' 0 in
           let reqint = test_bit status' 5 in
+          log_gpu "LCD set mode to 2";
           2,status',reqint
         else if !scanline_counter >= mode3bounds then
           let status' = set_bit lcdstatus 1 in
           let status' = set_bit status' 0 in
+          log_gpu "LCD set mode to 3";
           3,status',false
         else
           let status' = reset_bit lcdstatus 1 in
           let status' = reset_bit status' 0 in
           let reqint = test_bit status' 3 in
+          log_gpu "LCD set mode to 0";
           0,status',reqint
     in
     (*just entered a new mode so request interupt*)
     match reqint && (not (w mode = current_mode)) with
     | true ->
+      log_gpu @@
+      sprintf "Mode switch from %a to %a. Requesting interrupt"
+        Word.pps (w mode) Word.pps (current_mode);
       Interrupts.request interp ctxt 1 >>= fun ctxt ->
       write_word (w 0xFF41) status' ctxt interp
     | false ->
       ctxt#mem_at_addr (w 0xFF45) >>= fun coincidence_flag ->
       let status',ctxt' =
         if coincidence_flag = currentline then
-          let status' = set_bit status' 2 in
-          let ctxt' =
-            if test_bit status' 6 then
-              Interrupts.request interp ctxt 1
-            else
-              Some ctxt
-          in
-          status',ctxt'
+          (log_gpu "Coincidence flag and current scanline are same";
+           let status' = set_bit status' 2 in
+           let ctxt' =
+             if test_bit status' 6 then
+               (log_gpu
+                  "Coincidence interrupt enabled. Requesting lcd interrupt";
+                Interrupts.request interp ctxt 1)
+             else
+               Some ctxt
+           in
+           status',ctxt')
         else
           reset_bit status' 2,Some ctxt
       in

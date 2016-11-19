@@ -1,7 +1,9 @@
 open Core_kernel.Std
 open Bap.Std
 
-
+let log_interrupts s =
+  let section = Lwt_log.Section.make "interrupt" in
+  Lwt_log.ign_debug_f ~section "%s" s
 
 (* TODO remove interp *)
 let write_word addr w (ctxt : Z80_interpreter_debugger.context) interp :
@@ -20,9 +22,17 @@ Z80_interpreter_debugger.context option =
     Some ctxt'
   | _ -> None
 
+let to_string = function
+  | 0 -> "v-blank"
+  | 1 -> "lcd"
+  | 2 -> "timer"
+  | 3 -> "joypad"
+  | _ -> failwith "Unknown interrupt"
+
 let request interp ctxt i =
   let open Option in
   let open Util in
+  log_interrupts @@ sprintf "New interrupt request %d:%s" i (to_string i);
   ctxt#mem_at_addr (w 0xFF0F) >>= fun req ->
   let rq = set_bit req i in
   write_word (w 0xFF0f) rq ctxt interp
