@@ -87,7 +87,7 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
     match reqint && (not (w mode = current_mode)) with
     | true ->
       log_gpu @@
-      sprintf "Mode switch from %a to %a. Requesting interrupt"
+      sprintf "Mode switch from %a to %a. Requesting lcd interrupt"
         Word.pps (w mode) Word.pps (current_mode);
       Interrupts.request interp ctxt 1 >>= fun ctxt ->
       write_word (w 0xFF41) status' ctxt interp
@@ -139,11 +139,12 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
          (scanline_counter := 456;
           log_gpu "scanline counter set to 456";
           log_gpu "incrementing current scanline";
-          write_word ly Word.(currentline + w 1) ctxt interp (* inc scanline*)
+          write_word ly Word.(currentline + w 1) ctxt interp
           >>= fun ctxt' ->
           log_gpu "Have fresh ctxt'";
           if currentline = w 144 then
-            (log_gpu "request vblank interrupt";
+            (log_gpu @@
+             sprintf "Scanline is 144. Requesting v-blank interrupt";
              Interrupts.request interp ctxt' 0)
           else if currentline > w 153 then
             (log_gpu @@ sprintf
