@@ -24,6 +24,9 @@ problem, we need to update scanline in memory (FF44). But the only interface to 
 
 It looks like base class exp contains `create_storage`.
 
+-- we must initialize ff44 (can't be bot), because we expect a value for gpu to work. do we initialize it in boot, or do we
+initialize it when we encounter bot in gpu.ml? right now, i initialize in boot
+
 ### LCD
 
 I need to write the scanline to 0xFF44 (using GPU module), otherwise there's never any 'waiting' before rendering.
