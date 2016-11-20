@@ -19,7 +19,11 @@ To RENDER ON DEMAND wtih `step_insn`:
 ## TODO
 
 Use `ctxt#update` to bind mem variable to a new bil result (storage)
+Refactor memory writing to be like `wwrite_word` in interpreter
 
+potentially dangerous: `Lterm_ui.draw ui` enqueues a draw operation and returns immediately. i then hit the 'waiting for
+70244 cycles complete', while it only then, after that, actually starts drawing things to screen. BAD if it continues after
+waiting but rendering to screen is still happenin.
 
 ### GPU:
 
