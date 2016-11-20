@@ -397,15 +397,43 @@ class ['a] z80_interpreter image options = object(self)
   (** 1. *)
   method! eval stmts = super#eval stmts
 
+  method private wwrite_word addr w =
+      let open Option in
+      let open Z80_cpu.CPU in
+      let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
+      ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
+      (* TODO use self#store directly *)
+      let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
+      let open Monad.State in
+      (* Does this do what I think it does? *)
+      self#eval stmt >>= fun () ->
+      get ()
+
   method private service_interrupt i =
     get () >>= fun ctxt ->
     update (fun ctxt -> ctxt#set_interrupts_enabled false) >>= fun () ->
     match ctxt#mem_at_addr (Util.w 0xFF0F) with
     | Some req ->
       let req = Util.reset_bit req i in
-      (match Interrupts.write_word (Util.w 0xFF0F) req ctxt self with
-       | Some res -> return res
-       | None -> failwith "fuck")
+      self#wwrite_word (Util.w 0xFF0F) req >>= fun ctxt ->
+      let call_interrupt addr =
+        let store_to16 ~(dst : exp) ~(src : exp) : stmt =
+          let store_to =
+            Bil.(store ~mem:(var Z80_env.mem)
+                   ~addr:dst src LittleEndian `r16) in
+          Bil.(Z80_env.mem := store_to) in
+        let x = (Util.w 0x0) in
+            [Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc));
+             Bil.(Z80_env.sp := var Z80_env.sp - int (i16 2));
+             Bil.(jmp (int Word.(x@.addr)))
+            ] in
+      (match i with
+       | 0 -> self#eval (call_interrupt @@ Util.w 0x40) >>= fun () -> get ()
+       | 1 -> self#eval (call_interrupt @@ Util.w 0x48) >>= fun () -> get ()
+       | 2 -> self#eval (call_interrupt @@ Util.w 0x50) >>= fun () -> get ()
+       | 3 -> self#eval (call_interrupt @@ Util.w 0x60) >>= fun () -> get ()
+       | _ -> failwith "No such interrupt to service"
+      )
     | None -> failwith "No req in service_interrupt"
 
   method private check_interrupts =
