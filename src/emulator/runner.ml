@@ -406,9 +406,11 @@ doesn't have opportunity to continue*)
 
   let input_loop = set_up_input_loop term send_stream in
 
+  let clock_loop = Clock.start may_continue in
+
   (*Lwt_log.ign_debug "Spinning up event loops...";*)
   Lwt.finalize
-    (fun () -> Lwt.join [interp_loop;input_loop])
+    (fun () -> Lwt.join [interp_loop;input_loop;clock_loop])
     (fun () -> return ()) (* TODO: cleanup. somehow Lterm_ui.quit ui *)
 
 let run options image =
