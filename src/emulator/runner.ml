@@ -188,7 +188,7 @@ module Z80_interpreter_loop = struct
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
 
-  let handle_debug_rq_or_continue cmd_recv_stream section_dbg ctxt step_frame step_insn
+  let handle_debug_rq_or_step_once cmd_recv_stream section_dbg ctxt step_frame step_insn
       rrender =
     let open Debugger_types.Request in
     match Lwt_stream.get_available cmd_recv_stream with
@@ -241,7 +241,7 @@ module Z80_interpreter_loop = struct
       >>= fun () ->
 
       (* Non-blocking: handle input requests, or step *)
-      handle_debug_rq_or_continue cmd_recv_stream section_dbg ctxt step_frame
+      handle_debug_rq_or_step_once cmd_recv_stream section_dbg ctxt step_frame
         step_insn
         rrender
       >>= fun ctxt' ->

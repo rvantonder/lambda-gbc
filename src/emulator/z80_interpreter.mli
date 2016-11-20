@@ -10,6 +10,9 @@ class context : Z80_image.t -> Options.t -> object('s)
     method current_hunk : Z80_disassembler.Hunk.t
     method print_cpu : unit
 
+    method interrupts_enabled : bool
+    method set_interrupts_enabled : bool -> 's
+
     (** addrs tracks the addrs we have values for in memory.
         This is so that we can economically print sparse memory *)
     method addrs : Bitvector.Set.t

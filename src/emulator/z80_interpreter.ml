@@ -169,6 +169,13 @@ class context image options = object(self : 's)
 
   method inc_k = {< k = k + 1>}
 
+  val interrupts_enabled = false
+
+  method interrupts_enabled = interrupts_enabled
+
+  method set_interrupts_enabled (f : bool) =
+    {< interrupts_enabled = f >}
+
   method private value_to_word =
      function
      | Bil.Imm w -> Some w
@@ -389,6 +396,43 @@ class ['a] z80_interpreter image options = object(self)
   (** BILI base class methods *)
   (** 1. *)
   method! eval stmts = super#eval stmts
+
+  method private service_interrupt i =
+    get () >>= fun ctxt ->
+    update (fun ctxt -> ctxt#set_interrupts_enabled false) >>= fun () ->
+    match ctxt#mem_at_addr (Util.w 0xFF0F) with
+    | Some req ->
+      let req = Util.reset_bit req i in
+      (match Interrupts.write_word (Util.w 0xFF0F) req ctxt self with
+       | Some res -> return res
+       | None -> failwith "fuck")
+    | None -> failwith "No req in service_interrupt"
+
+  method private check_interrupts =
+    get () >>= fun ctxt ->
+    match ctxt#interrupts_enabled with
+    | true ->
+      (match ctxt#mem_at_addr (Util.w 0xFF0F) with
+      | Some req ->
+        if req > (Util.w 0) then
+          List.fold [0;1;2;3;4;5;6;7] ~init:(return ctxt)
+            ~f:(fun acc (bit as i) ->
+              match Util.test_bit req bit with
+              | false -> acc
+              | true ->
+                acc >>= fun ctxt ->
+                (match ctxt#mem_at_addr (Util.w 0xFFFF) with
+                | Some enabled ->
+                   if Util.test_bit enabled bit then
+                     self#service_interrupt i
+                   else
+                     acc
+                 | None -> acc)
+            )
+        else
+          return ctxt
+      | None -> return ctxt)
+    | false -> return ctxt
 
   (** Advance should be called after each set of lifted statements
       corresponding to one hunk has been interpreted. Not when every move is
