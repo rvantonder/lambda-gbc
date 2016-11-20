@@ -19,10 +19,7 @@ open LTerm_geom
 open LTerm_text
 open LTerm_key
 
-let log_render s =
-  let section = Lwt_log.Section.make "render" in
-  Lwt_log.ign_debug_f ~section "%s" s
-
+open Logging
 
 let verbose = false
 

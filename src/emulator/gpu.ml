@@ -1,10 +1,7 @@
 open Core_kernel.Std
 open Bap.Std
 open Util
-
-let log_gpu s =
-  let section = Lwt_log.Section.make "gpu" in
-  Lwt_log.ign_debug_f ~section "%s" s
+open Logging
 
 let scanline_counter = ref 456
 

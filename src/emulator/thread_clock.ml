@@ -1,9 +1,7 @@
 open Lwt
 open Format
 
-let log_clock s =
-  let section = Lwt_log.Section.make "clock" in
-  Lwt_log.ign_debug_f ~section "%s" s
+open Logging
 
 let last_time = ref 0.0
 

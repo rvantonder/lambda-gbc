@@ -10,9 +10,7 @@ module Lifter = Z80_lifter
 
 module CPU = Z80_cpu.CPU
 
-let log_interrupts s =
-  let section = Lwt_log.Section.make "interrupt" in
-  Lwt_log.ign_debug_f ~section "%s" s
+open Logging
 
 let verbose = false
 let debug = false
@@ -414,7 +412,7 @@ class ['a] z80_interpreter image options = object(self)
       get ()
 
   method private service_interrupt i =
-    log_interrupts @@
+    log_interrupt @@
     sprintf "Interrupt enabled. CPU servicing interrupt %d" i;
     get () >>= fun ctxt ->
     update (fun ctxt -> ctxt#set_interrupts_enabled false) >>= fun () ->
@@ -443,11 +441,11 @@ class ['a] z80_interpreter image options = object(self)
     | None -> failwith "No req in service_interrupt"
 
   method private check_interrupts =
-    log_interrupts "Checking interrupts";
+    log_interrupt "Checking interrupts";
     get () >>= fun ctxt ->
     match ctxt#interrupts_enabled with
     | true ->
-      log_interrupts "Interrupts ENABLED";
+      log_interrupt "Interrupts ENABLED";
       (match ctxt#mem_at_addr (Util.w16 0xFF0F) with
       | Some req ->
         if req > (Util.w8 0) then
@@ -456,7 +454,7 @@ class ['a] z80_interpreter image options = object(self)
               match Util.test_bit req bit with
               | false -> acc
               | true ->
-                log_interrupts @@ sprintf "Interrupt %d requested" i;
+                log_interrupt @@ sprintf "Interrupt %d requested" i;
                 acc >>= fun ctxt ->
                 (match ctxt#mem_at_addr (Util.w16 0xFFFF) with
                 | Some enabled ->
@@ -470,7 +468,7 @@ class ['a] z80_interpreter image options = object(self)
           return ctxt
       | None -> return ctxt)
     | false ->
-      log_interrupts "Interrupts DISABLED";
+      log_interrupt "Interrupts DISABLED";
       return ctxt
 
   (** Advance should be called after each set of lifted statements

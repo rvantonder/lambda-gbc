@@ -2,12 +2,9 @@ open Pixel
 open LTerm_draw
 open Core_kernel.Std
 open Color
+open Logging
 
 type t = Pixel.t list list
-
-let log_render s =
-  let section = Lwt_log.Section.make "render" in
-  Lwt_log.ign_debug_f ~section "%s" s
 
 (** Assume tiles 256x256 *)
 let from_tile_list ?(offset_y=0) ?(offset_x=0) tiles ctxt =
