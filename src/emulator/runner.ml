@@ -42,6 +42,10 @@ end
 module Z80_interpreter_loop = struct
   open Lwt
 
+  let log_render s =
+    let section = Lwt_log.Section.make "interrupt" in
+    Lwt_log.ign_debug_f ~section "%s" s
+
   let check_small_screen ui =
     let open LTerm_geom in
     let size = LTerm_ui.size ui in
@@ -49,7 +53,8 @@ module Z80_interpreter_loop = struct
        raise (Failure "I'm refuse to continue drawing. Screen too small"))
 
   let draw_bg ctxt lterm_ctxt tiles =
-    let offset addr =
+    log_render "Drawing bg";
+    let scroll_offset addr =
       let addr = Addr.of_int ~width:16 addr in
       let value = ctxt#mem_at_addr addr in
       match value with
@@ -57,9 +62,12 @@ module Z80_interpreter_loop = struct
         Some (Word.to_int v |> Or_error.ok_exn)
       | _ ->
         None in
-    let offset_y = offset 0xFF42 in
-    let offset_x = offset 0xFF43 in
-    Background.from_tile_list ?offset_y ?offset_x tiles lterm_ctxt |>
+    let scroll_offset_y = scroll_offset 0xFF42 in
+    let scroll_offset_x = scroll_offset 0xFF43 in
+    Background.from_tile_list
+      ?offset_y:scroll_offset_y
+      ?offset_x:scroll_offset_x
+      tiles lterm_ctxt |>
     Background.render
 
   let storage_of_context ctxt =
@@ -82,19 +90,25 @@ module Z80_interpreter_loop = struct
   (** TODO: why if i raise exception here does it get ignored? *)
   let draw draw_recv_stream ui matrix : unit =
     let open LTerm_geom in
-    let ctxt = Lwt_stream.next draw_recv_stream in (* TODO: how to return unit when reading from lwt here? *)
-    Lwt.on_success ctxt (fun ctxt ->
-        match tiles_from_mem ctxt with
-        | Some tiles ->
-          let size = LTerm_ui.size ui in
-          let lterm_ctxt = LTerm_draw.context matrix size in
-          (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
-            Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
-            (if size.rows < 289 || size.cols < 1430 then
-             raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-          LTerm_draw.clear lterm_ctxt;
-          draw_bg ctxt lterm_ctxt tiles
-        | None -> ())
+    let res =
+      Lwt_stream.next draw_recv_stream in
+    Lwt.on_success res (fun (ctxt,finished_drawing) ->
+        log_render "Received ctxt to draw";
+        (match tiles_from_mem ctxt with
+         | Some tiles ->
+           let size = LTerm_ui.size ui in
+           let lterm_ctxt = LTerm_draw.context matrix size in
+           (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
+             Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
+             (if size.rows < 289 || size.cols < 1430 then
+              raise (Failure "I'm not going to continue drawing. Screen too small"));*)
+           log_render "Clearing lterm";
+           LTerm_draw.clear lterm_ctxt;
+           draw_bg ctxt lterm_ctxt tiles;
+         | None -> ());
+        Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
+            log_render "Finished drawing";)
+      )
 
   (** A request may be received while input is blocking (paused) or
       non-blocking. Everything stays the same, except:
@@ -226,12 +240,22 @@ module Z80_interpreter_loop = struct
 
     (* Fuck mutable coords/ctxt*)
     let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
+    let finished_drawing = Lwt_mvar.create () in
+    (* remove the default variable from finished_drawing *)
+    Lwt_mvar.take finished_drawing >>= fun _ ->
 
     (** Create screen matrix. XXX mutable state *)
-    LTerm_ui.create term (fun ui matrix -> draw draw_recv_stream ui matrix) >>= fun ui ->
+    LTerm_ui.create term (fun ui matrix -> draw draw_recv_stream ui matrix)
+    >>= fun ui ->
 
     let rrender ctxt =
-      draw_send_stream (Some ctxt);
+      (* send ctxt to inside ui. it will wait there until draw ui is called
+         below *)
+      log_render "Sending ctxt";
+      draw_send_stream (Some (ctxt, finished_drawing));
+      (* call it *)
+      log_render "LTerm_ui.draw";
+      (* now immediately it calls draw and returns, not waiting*)
       LTerm_ui.draw ui
     in
 
@@ -241,7 +265,8 @@ module Z80_interpreter_loop = struct
       >>= fun () ->
 
       (* Non-blocking: handle input requests, or step *)
-      handle_debug_rq_or_step_once cmd_recv_stream section_dbg ctxt step_frame
+      handle_debug_rq_or_step_once
+        cmd_recv_stream section_dbg ctxt step_frame
         step_insn
         rrender
       >>= fun ctxt' ->
@@ -255,10 +280,14 @@ module Z80_interpreter_loop = struct
          may_continue at 60hz, and when that something is there, this loop
          can continue. If there's nothing there, it has to block and wait *)
       then
-        Lwt_log.debug ~section:section_cycles @@
-        sprintf "Waiting. Cycles: %d" cycles_done >>= fun _ ->
-        Lwt_mvar.take may_continue >>= fun _ ->
-        update ui ctxt' (cycles_done - 70244)
+        (log_render "Cycles done. Doing hard render";
+         rrender ctxt';
+         Lwt_mvar.take finished_drawing >>= fun _ ->
+         Lwt_log.debug ~section:section_cycles @@
+         sprintf "Waiting to continue. Cycles: %d" cycles_done >>= fun _ ->
+         Lwt_mvar.take may_continue >>= fun _ ->
+         update ui ctxt' (cycles_done - 70244)
+        )
         (* XXX : waiting stops the whole debug loop. another reason
            to pull it out *)
         (* not 0, but including the cycles if we went past *)

@@ -392,7 +392,7 @@ let decode bytes pos cc =
   | [0xF0;x;_;_] -> ~> (`LD, [a; !0x00; !0xff; !x]) 2 12 (* special, (load): LD A, (FF00+byte)*)
   | [0xF1;_;_;_] -> ~> (`POP, [af]) 1 12
   | [0xF2;_;_;_] -> failwith "Illegal opcode 0xF2;contention with 0xE2"
-  | [0xF3;_;_;_] -> ~> (`DI, []) 1 4
+  | [0xF3;_;_;_] -> ~> (`DI, []) 1 4 (* DISABLE master interrupt switch *)
   | [0xF4;_;_;_] -> failwith "Illegal opcode 0xF4"
   | [0xF5;_;_;_] -> ~> (`PUSH, [af]) 1 16
   | [0xF6;x;_;_] -> ~> (`OR, [a;!x]) 2 8
@@ -400,7 +400,7 @@ let decode bytes pos cc =
   | [0xF8;x;_;_] -> ~> (`LDHL, [sp; !x]) 2 12
   | [0xF9;_;_;_] -> ~> (`LD, [sp; hl]) 1 8
   | [0xFA;x;y;_] -> ~> (`LD, [sp; hl; !y; !x]) 3 16
-  | [0xFB;x;y;_] -> ~> (`EI, []) 1 4
+  | [0xFB;x;y;_] -> ~> (`EI, []) 1 4 (* ENABLE master interrupt switch *)
   | [0xFC;_;_;_] -> failwith "Illegal opcode 0xFC"
   | [0xFD;_;_;_] -> failwith "Illegal opcode 0xFD"
   | [0xFE;x;_;_] -> ~> (`CP, [!x]) 2 8 (** a is not strictly necessary here *)

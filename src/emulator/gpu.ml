@@ -121,7 +121,7 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
 let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
   let open Option in
 
-   log_gpu "Setting LCD status";
+  log_gpu "Setting LCD status";
   (set_lcd_status ctxt interp >>= fun ctxt ->
 
    let lcd_enabled = is_lcd_enabled ctxt in (* TODO *)
@@ -159,8 +159,10 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
                Word.pps currentline;
              write_word ly (w8 0) ctxt interp)
           else if currentline < w8 144 then
+            (* TODO see if we can ignore this. Not a long term solution
+               .consider that the vram banks may switch between rendering *)
             (log_gpu @@ sprintf "drawing scanline %a" Word.pps currentline;
-             return ctxt') (* todo draw scanline*)
+             return ctxt')
           else
             (log_gpu "no gpu update, returning ctxt'";
              return ctxt')

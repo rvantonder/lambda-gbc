@@ -547,6 +547,7 @@ let print_ctxt ctxt options =
       | Bil.Mem s -> () (* Our example doesn't use memory *)
       | Bil.Bot -> () (* Our example has no undefined results *))
 
+(*
 let render options ctxt =
   let open Lwt in
   match ctxt#lookup (Z80_env.mem) with
@@ -558,3 +559,4 @@ let render options ctxt =
        else Screen.render storage
      | _ -> return ())
   | _ -> return ()
+*)

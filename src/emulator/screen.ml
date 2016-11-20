@@ -4,9 +4,9 @@
     list containing a 3-element rgb tuple. Tiles are good for
     lambda-term and coordinate-schemes.
 
-    2) A 256x256 list list containing 3-element rgb tuple for screen
-    rendering. This is good for debugging and ascii representation,
-    but probably not so useful later on.
+    2) A 256x256 list list containing 3-element rgb tuple for screen rendering.
+    This is good for debugging and ascii representation, but probably not so
+    useful later on.
 *)
 
 open Bap.Std
@@ -18,6 +18,11 @@ open Lwt
 open LTerm_geom
 open LTerm_text
 open LTerm_key
+
+let log_render s =
+  let section = Lwt_log.Section.make "render" in
+  Lwt_log.ign_debug_f ~section "%s" s
+
 
 let verbose = false
 
@@ -124,22 +129,32 @@ let print_ascii_screen tiles =
          printf "\n")
 
 (** one byte to 16 byte lookup *)
-let tiles_of_idxs storage base idxs =
+let tiles_of_idxs storage base idxs : 'a list list Or_error.t =
+  let open Or_error in
   let w16 = Addr.of_int ~width:16 16 in
   let (!) = Fn.compose ok_exn Addr.to_int in
-  List.fold idxs ~init:[] ~f:(fun acc idx ->
+  List.fold idxs ~init:(return []) ~f:(fun acc idx ->
       (* ugly af cast from 8 to 16: *)
       let idx = Addr.to_int idx |> ok_exn |> Addr.of_int ~width:16 in
       (* TODO keep word*)
-      let range = List.range !Addr.(base+(idx*w16)) !Addr.(base+(idx*w16)+w16) in
-      let tile = List.fold range ~init:[] ~f:(fun inner_acc addr_int ->
-          let addr = Addr.of_int ~width:16 addr_int in
-          match storage#load addr with
-          | Some word -> word::inner_acc
-          | None ->
-            failwith @@ sprintf "Word 0x%04x does not exist in memory" addr_int)
-                 |> List.rev in
-      tile::acc)
+      let range =
+        List.range !Addr.(base+(idx*w16)) !Addr.(base+(idx*w16)+w16) in
+      let tile : 'a list Or_error.t =
+        List.fold range ~init:(return []) ~f:(fun inner_acc addr_int ->
+            let addr = Addr.of_int ~width:16 addr_int in
+            match storage#load addr with
+            | Some word ->
+              inner_acc >>= fun inner_acc ->
+              return (word::inner_acc)
+            | None ->
+              log_render @@
+              sprintf "Warning tiles_of_idxs : word 0x%04x does \
+                       not exist in memory" addr_int;
+              Or_error.error_string "Could not read memory. Bailing")
+      in
+      tile >>= fun tile ->
+      acc >>= fun acc ->
+      return ((List.rev tile)::acc))
 
 (* Based on lcdc, offset is 0x1c00 or 0x1800 *)
 (*
@@ -154,13 +169,21 @@ let get_tiles storage =
   let open Gbc_segment in
   storage#load (Addr.of_int ~width:16 0xFF40) >>= fun lcdc ->
   let mask = Word.of_int ~width:8 0x8 in
-  (if Word.(lcdc land mask = (zero 8)) then "vram-tile-map-0"
-   else "vram-tile-map-1") |> fun map_display_select ->
+  (if Word.(lcdc land mask = (zero 8)) then
+     (log_render "selecting vram tile MAP 0";
+      "vram-tile-map-0")
+   else (
+     log_render "selecting vram tile MAP 1";
+     "vram-tile-map-1")
+  ) |> fun map_display_select ->
   let mask = Word.of_int ~width:8 0x10 in
-  (if Word.(lcdc land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
-   else "vram-tile-set-1") |> fun data_display_select -> (* 0 - 255 *)
-  (*printf "map_display_select is: %s\n" map_display_select;
-  printf "data_display_select is: %s\n" data_display_select;*)
+  (if Word.(lcdc land mask = (zero 8)) then
+     (log_render "selecting vram tile SET 0";
+      "vram-tile-set-0") (*-127 - 128*)
+   else (log_render "selecting vram tile SET 1";
+         "vram-tile-set-1")) |> fun data_display_select -> (* 0 - 255 *)
+
+
   if verbose then
     Util.dump_segment storage (Gbc_segment.segment_of_name map_display_select);
   if verbose then
@@ -170,48 +193,80 @@ let get_tiles storage =
   let data_display_segment = Gbc_segment.segment_of_name data_display_select in
   let range = List.range map_segment.pos (map_segment.pos
                                           +map_segment.size) in
-  (** If a word does not exist in memory, bail and return None *)
-  List.fold range ~init:(Some []) ~f:(fun acc addr_int ->
-      let addr = Addr.of_int ~width:16 addr_int in
-      acc >>= fun l ->
-      storage#load addr >>= fun word -> Some (word::l))
-  (* 1024 bytes *)
-  >>= fun idxs ->
-  (* tiles : 32 x 32
-     tile 0    : 16 bytes
-     tile 1    : 16 bytes
-     ...
-     tile 1024 : 16 bytes *)
-  let base = Addr.of_int ~width:16 data_display_segment.pos in
-  let tiles = tiles_of_idxs storage base idxs in
-  (* tiles' :
-     [
-        tile 1:      [
-                     row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
-                     ...
-                     row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
-                     ]
-        tile 2:      [
-                     row 0 : ...
-                     ...
-                     row 8 : ...
-                     ]
 
-        tile ...
+  (* Nasty fucking vram hack just reading first addr *)
+  let ft = List.nth_exn range 0 in
+  let ft = Addr.of_int ~width:16 ft in
+  log_render @@ sprintf "HACK: read MAP addr %a" Word.pps ft;
+  match storage#load ft with
+  | Some _ ->
+    (** If a word does not exist in memory, bail and return None *)
+    List.fold range ~init:(Some []) ~f:(fun acc addr_int ->
+        let addr = Addr.of_int ~width:16 addr_int in
+        acc >>= fun l ->
+        storage#load addr >>= fun word -> Some (word::l))
+    (* 1024 bytes *)
+    >>= fun idxs ->
+    (* tiles : 32 x 32
+       tile 0    : 16 bytes
+       tile 1    : 16 bytes
+       ...
+       tile 1024 : 16 bytes *)
 
-        tile 1024:   [
-                     row 0 : ...
-                     ...
-                     row 8 : ...
-                     ]
-     ]
-  *)
-  let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
-  let tiles' = tiles_to_pixel_grid tiles' in
-  (*print_ascii_screen tiles';*)
-  return tiles'
+    let base = Addr.of_int ~width:16 data_display_segment.pos in
+    log_render @@ sprintf "HACK2: read DATA SET %a" Word.pps base;
+    (match storage#load base with
+     | Some _ ->
+       let tiles = tiles_of_idxs storage base idxs in
+       (* tiles' :
+          [
+             tile 1:      [
+                          row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
+                          ...
+                          row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
+                          ]
+             tile 2:      [
+                          row 0 : ...
+                          ...
+                          row 8 : ...
+                          ]
+
+             tile ...
+
+             tile 1024:   [
+                          row 0 : ...
+                          ...
+                          row 8 : ...
+                          ]
+          ]
+       *)
+       (match tiles with
+        | Ok tiles ->
+          let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
+          log_render @@ "Firing tiles_to_pixel_grid";
+          let tiles' = tiles_to_pixel_grid tiles' in
+          (*print_ascii_screen tiles';*)
+          return tiles'
+        | Error _ ->
+          log_render "VRAM does not contain values for 1024 tiles.";
+          None)
+     | None ->
+       log_render "Fuck this, no VRAM SET hack.";
+       None )
+  | None ->
+    log_render "Fuck this, no VRAM MAP hack.";
+    None
+
+
+
+(*    log_render @@
+      sprintf "VRAM does not contain values for 1024 tiles. Found %d"
+      (List.length idxs);
+      None*)
 
 (**
+   http://www.codeslinger.co.uk/pages/projects/gameboy/graphics.html
+
    FF40 - LCDC - LCD Control (R/W)
    Bit 7 - LCD Display Enable             (0=Off, 1=On)
    Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
@@ -222,6 +277,8 @@ let get_tiles storage =
    Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
    Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
 *)
+
+(*
 let get_tiles' storage =
   match storage with
   | Some storage ->
@@ -229,21 +286,32 @@ let get_tiles' storage =
     let lcdc = storage#load (Addr.of_int ~width:16 0xFF40) in
     let map_display_select =
       match lcdc with
-      | Some w -> printf "LCDC: %a\n" Word.pp w;
+      | Some w ->
         let mask = Word.of_int ~width:8 0x8 in (* Bit 3: 00001000 *)
-        if Word.(w land mask = (zero 8)) then "vram-tile-map-0"
-        else "vram-tile-map-1"
-      | None -> printf "Can't render here: no LCDC"; "vram-tile-map-0" in (* WARN *)
+        if Word.(w land mask = (zero 8)) then
+          (log_render "selecting vram tile MAP 0";
+           "vram-tile-map-0")
+        else
+          (log_render "selecting vram tile MAP 1";
+           "vram-tile-map-1")
+      | None -> log_render "Can't render map: no LCDC. \
+                            Choosing vram tile map 0"; "vram-tile-map-0" in
     let data_display_select =
       match lcdc with
       | Some w -> printf "LCDC: %a\n" Word.pp w;
         let mask = Word.of_int ~width:8 0x10 in (* Bit 4: 00010000 *)
-        if Word.(w land mask = (zero 8)) then "vram-tile-set-0" (*-127 - 128*)
-        else "vram-tile-set-1" (* 0 - 255 *)
-      | None -> printf "Can't render here: no LCDC"; "vram-tile-set-0" (* WARN *)
+        if Word.(w land mask = (zero 8)) then
+          (log_render "selecting vram tile SET 0";
+           "vram-tile-set-0" (*-127 - 128*))
+        else (
+          log_render "selecting vram tile SET 1";
+          "vram-tile-set-1") (* 0 - 255 *)
+      | None -> log_render "Can't render set: no LCDC. \
+                           Choosing tile set 0";
+        "vram-tile-set-0" (* WARN *)
     in
-    printf "map_display_select is: %s\n" map_display_select;
-    printf "data_display_select is: %s\n" data_display_select;
+    log_render @@ sprintf "map_display_select is: %s\n" map_display_select;
+    log_render @@ sprintf "data_display_select is: %s\n" data_display_select;
     if verbose then
       Util.dump_segment storage (Gbc_segment.segment_of_name map_display_select);
     if verbose then
@@ -257,7 +325,10 @@ let get_tiles' storage =
         match storage#load addr with
         | Some word -> word::acc
         | None ->
-          failwith @@ sprintf "Word 0x%04x does not exist in memory" addr_int) in
+          log_render @@
+            sprintf "Warning idxs in get_tiles': word 0x%04x does \
+                     not exist in memory" addr_int;
+          []) in
     (* tiles : 32 x 32
        tile 0    : 16 bytes
        tile 1    : 16 bytes
@@ -292,6 +363,9 @@ let get_tiles' storage =
     let tiles' = tiles_to_pixel_grid tiles' in
     tiles'
   | None -> []
+*)
 
+(*
 let render storage =
   Render.run_lwt (get_tiles' (Some storage))
+*)

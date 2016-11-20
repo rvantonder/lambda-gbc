@@ -5,14 +5,16 @@ open Color
 
 type t = Pixel.t list list
 
+let log_render s =
+  let section = Lwt_log.Section.make "render" in
+  Lwt_log.ign_debug_f ~section "%s" s
+
 (** Assume tiles 256x256 *)
 let from_tile_list ?(offset_y=0) ?(offset_x=0) tiles ctxt =
   let open LTerm_style in
   let open Lwt in
-  let section = Lwt_log.Section.make "background_from_tile_list" in
-  let msg = Format.sprintf "Background from %d tiles. Shift Offset X: %d Y: %d"
-      (List.length tiles) offset_x offset_y in
-  Lwt_log.ign_debug ~section msg;
+  log_render @@ sprintf "Background from %d tiles. Shift Offset X: %d Y: %d"
+      (List.length tiles) offset_x offset_y;
 
   (*let offset_y = 0x20 in*)
   let screen_160_144 = List.slice tiles offset_y (144+offset_y) |>
@@ -29,9 +31,14 @@ let from_tile_list ?(offset_y=0) ?(offset_x=0) tiles ctxt =
 (** render a background on screen GBC bounds is 160 x 144. Assume this was set,
     with correct offsets, in from_tile_list *)
 let render (background : t) =
-  let section = Lwt_log.Section.make "background_render" in
-  let msg = Format.sprintf "Rendering background" in
-  Lwt_log.ign_debug ~section msg;
+  log_render "Iterating over background, calling pixel.render";
   List.iteri background ~f:(fun j row ->
       List.iteri row ~f:(fun i pixel ->
           Pixel.render pixel))
+
+let render_line (background : t) i =
+  let open Option in
+  log_render @@ sprintf "Rendering line %d" i;
+  (List.nth background i >>= fun row ->
+   List.iteri row ~f:(fun i pixel ->
+       Pixel.render pixel) |> return) |> ignore
