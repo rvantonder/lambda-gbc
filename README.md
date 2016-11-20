@@ -23,11 +23,11 @@ interrupt
 render
 gpu
 cycles
-ev_int_add_bp
-ev_int_rq_snd
-ev_int_bp_trigger
-ev_int_dbg_eval
-ev_int_dbg_pc_undef
+ev_cpu_add_bp
+ev_cpu_rq_snd
+ev_cpu_bp_trigger
+ev_cpu_dbg_eval
+ev_cpu_dbg_pc_undef
 ev_dbg_rq_rcv
 ev_dbg_rq_rcv_in_blking
 ev_dbg_rq_rcv_in_non_blking
