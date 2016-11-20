@@ -16,14 +16,27 @@ To RENDER ON DEMAND wtih `step_insn`:
 * wait
 * render
 
+## Debug labels
+
+```
+interrupt
+render
+gpu
+cycles
+ev_int_add_bp
+ev_int_rq_snd
+ev_int_bp_trigger
+ev_int_dbg_eval
+ev_int_dbg_pc_undef
+ev_dbg_rq_rcv
+ev_dbg_rq_rcv_in_blking
+ev_dbg_rq_rcv_in_non_blking
+```
+
 ## TODO
 
 Use `ctxt#update` to bind mem variable to a new bil result (storage)
 Refactor memory writing to be like `wwrite_word` in interpreter
-
-potentially dangerous: `Lterm_ui.draw ui` enqueues a draw operation and returns immediately. i then hit the 'waiting for
-70244 cycles complete', while it only then, after that, actually starts drawing things to screen. BAD if it continues after
-waiting but rendering to screen is still happenin.
 
 ### GPU:
 
