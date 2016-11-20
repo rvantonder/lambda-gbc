@@ -16,6 +16,10 @@ To RENDER ON DEMAND wtih `step_insn`:
 * wait
 * render
 
+## TODO
+
+Use `ctxt#update` to bind mem variable to a new bil result (storage)
+
 
 ### GPU:
 
