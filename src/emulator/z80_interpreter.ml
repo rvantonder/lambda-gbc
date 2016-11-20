@@ -491,6 +491,7 @@ class ['a] z80_interpreter image options = object(self)
       update (fun ctxt ->
           List.fold ~init:ctxt bil ~f:(fun ctxt bil ->
               sync_if_needed ctxt bil)) >>= fun () ->
+      self#check_interrupts >>= fun ctxt ->
       update (fun ctxt -> ctxt#inc_k) >>= fun () ->
       update (fun ctxt -> ctxt#inc_cpu_clock)
 
