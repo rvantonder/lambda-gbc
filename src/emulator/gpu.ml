@@ -15,8 +15,11 @@ let scanline_counter = ref 456
    interrupt first? *)
 let is_lcd_enabled ctxt =
   let open Option in
-  match ctxt#mem_at_addr (w 0xFF40) with
-  | Some lcd_byte -> test_bit lcd_byte 7
+  match ctxt#mem_at_addr (w16 0xFF40) with
+  | Some lcd_byte ->
+    log_gpu @@ sprintf "is_lcd_enabled testing addr %a. value is %a"
+    Word.pps (w16 0xFF40) Word.pps lcd_byte;
+      test_bit lcd_byte 7
   | None -> false
 
 (* TODO remove interp *)
@@ -40,23 +43,24 @@ Z80_interpreter_debugger.context option =
 let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
   Z80_interpreter_debugger.context option =
   let open Option in
-  ctxt#mem_at_addr (w 0xFF41) >>= fun lcdstatus ->
+  ctxt#mem_at_addr (w16 0xFF41) >>= fun lcdstatus ->
   match is_lcd_enabled ctxt with
   | false ->
     (*set the mode to 1 during lcd disabled and reset scanline*)
     scanline_counter := 456;
     let ly = Addr.of_int ~width:16 0xFF44 in
-    write_word ly (w 0) ctxt interp >>= fun ctxt' ->
-    let status' = Word.(lcdstatus land w 252) in
+    write_word ly (w8 0) ctxt interp >>= fun ctxt' ->
+    let status' = Word.(lcdstatus land w8 252) in
     let status' = set_bit status' 0 in
-    log_gpu "LCD disabled. Reset scanline and set mode to 1";
-    write_word (w 0xFF41) status' ctxt' interp
+    log_gpu "LCD disabled during set_lcd_status. \
+             Reset scanline and set mode to 1";
+    write_word (w16 0xFF41) status' ctxt' interp
   | true ->
     let ly = Addr.of_int ~width:16 0xFF44 in
     ctxt#mem_at_addr ly >>= fun currentline ->
-    let current_mode = Word.(lcdstatus land w 3) in
+    let current_mode = Word.(lcdstatus land w8 3) in
     let mode,status',reqint =
-      if currentline >= w 144 then
+      if currentline >= w8 144 then
         let status' = set_bit lcdstatus 0 in
         let status' = reset_bit status' 1 in
         let reqint = test_bit status' 4 in
@@ -84,15 +88,15 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
           0,status',reqint
     in
     (*just entered a new mode so request interupt*)
-    match reqint && (not (w mode = current_mode)) with
+    match reqint && (not (w8 mode = current_mode)) with
     | true ->
       log_gpu @@
       sprintf "Mode switch from %a to %a. Requesting lcd interrupt"
-        Word.pps (w mode) Word.pps (current_mode);
+        Word.pps (w8 mode) Word.pps (current_mode);
       Interrupts.request interp ctxt 1 >>= fun ctxt ->
-      write_word (w 0xFF41) status' ctxt interp
+      write_word (w16 0xFF41) status' ctxt interp
     | false ->
-      ctxt#mem_at_addr (w 0xFF45) >>= fun coincidence_flag ->
+      ctxt#mem_at_addr (w16 0xFF45) >>= fun coincidence_flag ->
       let status',ctxt' =
         if coincidence_flag = currentline then
           (log_gpu "Coincidence flag and current scanline are same";
@@ -110,18 +114,21 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
           reset_bit status' 2,Some ctxt
       in
       ctxt' >>= fun ctxt' ->
-      write_word (w 0xFF41) status' ctxt interp
+      write_word (w16 0xFF41) status' ctxt interp
 
 (* TODO: fixup typing on debugger versus normal itnerpreter *)
 (*http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings*)
 let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
   let open Option in
 
+   log_gpu "Setting LCD status";
   (set_lcd_status ctxt interp >>= fun ctxt ->
 
-   (*let lcd_enabled = is_lcd_enabled ctxt in *) (* TODO *)
-   let lcd_enabled = true in
-   log_gpu @@ sprintf "lcd enabled : %b" lcd_enabled;
+   let lcd_enabled = is_lcd_enabled ctxt in (* TODO *)
+   (*let lcd_enabled = true in*)
+
+   log_gpu "Continuing with GPU update";
+   log_gpu @@ sprintf "LCD enabled : %b" lcd_enabled;
 
    if lcd_enabled then
      (
@@ -139,19 +146,19 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
          (scanline_counter := 456;
           log_gpu "scanline counter set to 456";
           log_gpu "incrementing current scanline";
-          write_word ly Word.(currentline + w 1) ctxt interp
+          write_word ly Word.(currentline + w8 1) ctxt interp
           >>= fun ctxt' ->
           log_gpu "Have fresh ctxt'";
-          if currentline = w 144 then
+          if currentline = w8 144 then
             (log_gpu @@
              sprintf "Scanline is 144. Requesting v-blank interrupt";
              Interrupts.request interp ctxt' 0)
-          else if currentline > w 153 then
+          else if currentline > w8 153 then (* fake the v-blank period*)
             (log_gpu @@ sprintf
                "currentline %a past scanline 153, resetting 0"
                Word.pps currentline;
-             write_word ly (w 0) ctxt interp)
-          else if currentline < w 144 then
+             write_word ly (w8 0) ctxt interp)
+          else if currentline < w8 144 then
             (log_gpu @@ sprintf "drawing scanline %a" Word.pps currentline;
              return ctxt') (* todo draw scanline*)
           else

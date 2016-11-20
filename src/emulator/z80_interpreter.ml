@@ -10,6 +10,10 @@ module Lifter = Z80_lifter
 
 module CPU = Z80_cpu.CPU
 
+let log_interrupts s =
+  let section = Lwt_log.Section.make "interrupt" in
+  Lwt_log.ign_debug_f ~section "%s" s
+
 let verbose = false
 let debug = false
 let verbose_sync = false
@@ -410,46 +414,51 @@ class ['a] z80_interpreter image options = object(self)
       get ()
 
   method private service_interrupt i =
+    log_interrupts @@
+    sprintf "Interrupt enabled. CPU servicing interrupt %d" i;
     get () >>= fun ctxt ->
     update (fun ctxt -> ctxt#set_interrupts_enabled false) >>= fun () ->
-    match ctxt#mem_at_addr (Util.w 0xFF0F) with
+    match ctxt#mem_at_addr (Util.w16 0xFF0F) with
     | Some req ->
       let req = Util.reset_bit req i in
-      self#wwrite_word (Util.w 0xFF0F) req >>= fun ctxt ->
+      self#wwrite_word (Util.w16 0xFF0F) req >>= fun ctxt ->
       let call_interrupt addr =
         let store_to16 ~(dst : exp) ~(src : exp) : stmt =
           let store_to =
             Bil.(store ~mem:(var Z80_env.mem)
                    ~addr:dst src LittleEndian `r16) in
           Bil.(Z80_env.mem := store_to) in
-        let x = (Util.w 0x0) in
+        let x = (Util.w8 0x0) in
             [Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc));
              Bil.(Z80_env.sp := var Z80_env.sp - int (i16 2));
              Bil.(jmp (int Word.(x@.addr)))
             ] in
       (match i with
-       | 0 -> self#eval (call_interrupt @@ Util.w 0x40) >>= fun () -> get ()
-       | 1 -> self#eval (call_interrupt @@ Util.w 0x48) >>= fun () -> get ()
-       | 2 -> self#eval (call_interrupt @@ Util.w 0x50) >>= fun () -> get ()
-       | 3 -> self#eval (call_interrupt @@ Util.w 0x60) >>= fun () -> get ()
+       | 0 -> self#eval (call_interrupt @@ Util.w8 0x40) >>= fun () -> get ()
+       | 1 -> self#eval (call_interrupt @@ Util.w8 0x48) >>= fun () -> get ()
+       | 2 -> self#eval (call_interrupt @@ Util.w8 0x50) >>= fun () -> get ()
+       | 3 -> self#eval (call_interrupt @@ Util.w8 0x60) >>= fun () -> get ()
        | _ -> failwith "No such interrupt to service"
       )
     | None -> failwith "No req in service_interrupt"
 
   method private check_interrupts =
+    log_interrupts "Checking interrupts";
     get () >>= fun ctxt ->
     match ctxt#interrupts_enabled with
     | true ->
-      (match ctxt#mem_at_addr (Util.w 0xFF0F) with
+      log_interrupts "Interrupts ENABLED";
+      (match ctxt#mem_at_addr (Util.w16 0xFF0F) with
       | Some req ->
-        if req > (Util.w 0) then
+        if req > (Util.w8 0) then
           List.fold [0;1;2;3;4;5;6;7] ~init:(return ctxt)
             ~f:(fun acc (bit as i) ->
               match Util.test_bit req bit with
               | false -> acc
               | true ->
+                log_interrupts @@ sprintf "Interrupt %d requested" i;
                 acc >>= fun ctxt ->
-                (match ctxt#mem_at_addr (Util.w 0xFFFF) with
+                (match ctxt#mem_at_addr (Util.w16 0xFFFF) with
                 | Some enabled ->
                    if Util.test_bit enabled bit then
                      self#service_interrupt i
@@ -460,7 +469,9 @@ class ['a] z80_interpreter image options = object(self)
         else
           return ctxt
       | None -> return ctxt)
-    | false -> return ctxt
+    | false ->
+      log_interrupts "Interrupts DISABLED";
+      return ctxt
 
   (** Advance should be called after each set of lifted statements
       corresponding to one hunk has been interpreted. Not when every move is

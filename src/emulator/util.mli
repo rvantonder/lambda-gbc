@@ -14,4 +14,6 @@ val set_bit : word -> int -> word
 
 val reset_bit : word -> int -> word
 
-val w : int -> word
+val w8 : int -> word
+
+val w16 : int -> word

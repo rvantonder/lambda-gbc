@@ -6,19 +6,25 @@ open Format
 open Gbc_segment
 open Options
 
-let w = Word.of_int ~width:8
+let log_gpu s =
+  let section = Lwt_log.Section.make "gpu" in
+  Lwt_log.ign_debug_f ~section "%s" s
+
+let w8 = Word.of_int ~width:8
+let w16 = Word.of_int ~width:16
 
 let test_bit v bit_pos =
-  let mask = Word.(w 1 lsl w bit_pos) in
-  (*log_gpu @@ sprintf "mask: %a v: %a" Word.pps mask Word.pps v;*)
-  Word.(mask land v) = Word.(w 1 lsl w bit_pos)
+  let mask = Word.(w8 1 lsl w8 bit_pos) in
+  log_gpu @@ sprintf "test_bit @ %d : mask: %a v: %a"
+    bit_pos Word.pps mask Word.pps v;
+  Word.(mask land v) = Word.(w8 1 lsl w8 bit_pos)
 
 let set_bit v bit_pos =
-  let mask = Word.(w 1 lsl w bit_pos) in
+  let mask = Word.(w8 1 lsl w8 bit_pos) in
   Word.(mask lor v)
 
 let reset_bit v bit_pos =
-  let mask = Word.(w 1 lsl w bit_pos) in
+  let mask = Word.(w8 1 lsl w8 bit_pos) in
   Word.(mask land (lnot v))
 
 let time tag f options =
