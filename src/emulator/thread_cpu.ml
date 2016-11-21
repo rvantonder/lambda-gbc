@@ -54,7 +54,7 @@ module Z80_interpreter_loop = struct
       | Bp addr,_ ->
         ctxt#add_breakpoint addr
       | Render,_ ->
-        Screen.render screen ctxt;
+        Screen.render screen ctxt |> ignore; (* TODO fix *)
         ctxt
       | Print Mem w,_ ->
         let addr = Addr.of_int ~width:16 w in
@@ -161,7 +161,7 @@ module Z80_interpreter_loop = struct
          can continue. If there's nothing there, it has to block and wait *)
       then
         (log_render "Cycles done. Doing hard render";
-         Screen.render screen ctxt';
+         Screen.render screen ctxt' >>= fun () ->
 
          log_cycles @@
          sprintf "Waiting to continue. Cycles: %d" cycles_done;

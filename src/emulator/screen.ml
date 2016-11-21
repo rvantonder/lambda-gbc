@@ -153,6 +153,21 @@ let tiles_of_idxs storage base idxs : 'a list list Or_error.t =
       acc >>= fun acc ->
       return ((List.rev tile)::acc))
 
+
+(**
+   http://www.codeslinger.co.uk/pages/projects/gameboy/graphics.html
+
+   FF40 - LCDC - LCD Control (R/W)
+   Bit 7 - LCD Display Enable             (0=Off, 1=On)
+   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
+   Bit 5 - Window Display Enable          (0=Off, 1=On)
+   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
+   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
+   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
+   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
+   Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
+*)
+
 (* Based on lcdc, offset is 0x1c00 or 0x1800 *)
 (*
    Bit 3 - BG Tile Map Display Select
@@ -255,120 +270,17 @@ let get_tiles storage =
     None
 
 
-
-(*    log_render @@
-      sprintf "VRAM does not contain values for 1024 tiles. Found %d"
-      (List.length idxs);
-      None*)
-
-(**
-   http://www.codeslinger.co.uk/pages/projects/gameboy/graphics.html
-
-   FF40 - LCDC - LCD Control (R/W)
-   Bit 7 - LCD Display Enable             (0=Off, 1=On)
-   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
-   Bit 5 - Window Display Enable          (0=Off, 1=On)
-   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
-   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
-   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
-   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
-   Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
-*)
-
-(*
-let get_tiles' storage =
-  match storage with
-  | Some storage ->
-    let open Gbc_segment in
-    let lcdc = storage#load (Addr.of_int ~width:16 0xFF40) in
-    let map_display_select =
-      match lcdc with
-      | Some w ->
-        let mask = Word.of_int ~width:8 0x8 in (* Bit 3: 00001000 *)
-        if Word.(w land mask = (zero 8)) then
-          (log_render "selecting vram tile MAP 0";
-           "vram-tile-map-0")
-        else
-          (log_render "selecting vram tile MAP 1";
-           "vram-tile-map-1")
-      | None -> log_render "Can't render map: no LCDC. \
-                            Choosing vram tile map 0"; "vram-tile-map-0" in
-    let data_display_select =
-      match lcdc with
-      | Some w -> printf "LCDC: %a\n" Word.pp w;
-        let mask = Word.of_int ~width:8 0x10 in (* Bit 4: 00010000 *)
-        if Word.(w land mask = (zero 8)) then
-          (log_render "selecting vram tile SET 0";
-           "vram-tile-set-0" (*-127 - 128*))
-        else (
-          log_render "selecting vram tile SET 1";
-          "vram-tile-set-1") (* 0 - 255 *)
-      | None -> log_render "Can't render set: no LCDC. \
-                           Choosing tile set 0";
-        "vram-tile-set-0" (* WARN *)
-    in
-    log_render @@ sprintf "map_display_select is: %s\n" map_display_select;
-    log_render @@ sprintf "data_display_select is: %s\n" data_display_select;
-    if verbose then
-      Util.dump_segment storage (Gbc_segment.segment_of_name map_display_select);
-    if verbose then
-      Util.dump_segment storage (Gbc_segment.segment_of_name data_display_select);
-    let map_segment = Gbc_segment.segment_of_name map_display_select in
-    let data_display_segment = Gbc_segment.segment_of_name data_display_select in
-    let range = List.range map_segment.pos (map_segment.pos+map_segment.size) in
-    (* 1024 bytes *)
-    let idxs = List.fold range ~init:[] ~f:(fun acc addr_int ->
-        let addr = Addr.of_int ~width:16 addr_int in
-        match storage#load addr with
-        | Some word -> word::acc
-        | None ->
-          log_render @@
-            sprintf "Warning idxs in get_tiles': word 0x%04x does \
-                     not exist in memory" addr_int;
-          []) in
-    (* tiles : 32 x 32
-       tile 0    : 16 bytes
-       tile 1    : 16 bytes
-       ...
-       tile 1024 : 16 bytes *)
-    let base = Addr.of_int ~width:16 data_display_segment.pos in
-    let tiles = tiles_of_idxs storage base idxs in
-    (* tiles' :
-       [
-          tile 1:      [
-                       row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
-                       ...
-                       row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
-                       ]
-          tile 2:      [
-                       row 0 : ...
-                       ...
-                       row 8 : ...
-                       ]
-
-          tile ...
-
-          tile 1024:   [
-                       row 0 : ...
-                       ...
-                       row 8 : ...
-                       ]
-       ]
-    *)
-    let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
-    (*print_ascii_screen tiles';*)
-    let tiles' = tiles_to_pixel_grid tiles' in
-    tiles'
-  | None -> []
-*)
-
-(*
-let render storage =
-  Render.run_lwt (get_tiles' (Some storage))
-*)
+(** [send] is the member that triggers rendering: ui is enqueued with
+    an item to draw. When then call LTerm_ui.draw to trigger the
+    LTerm call back that draws ui. LTerm_ui.draw is asynchronous.
+    We introduce a syncrhony variable [finished_drawing] which we
+    gave to the LTerm call back that draws the ui. It will
+    populate finished_drawing once it's finished. We block
+    until it is ready by calling Lwt_mvar.take after LTer_uil.draw *)
 
 type t = {ui : LTerm_ui.t Lwt.t;
-          send : (Z80_interpreter_debugger.context * unit Lwt_mvar.t) option
+          send :
+            (Z80_interpreter_debugger.context * unit Lwt_mvar.t) option
             -> unit;
           finished_drawing : unit Lwt_mvar.t
          }
@@ -413,6 +325,7 @@ let tiles_from_mem ctxt =
      | None -> ())*)
 
 (** TODO: why if i raise exception here does it get ignored? *)
+(** Warning: double check this. on_success returns immediately *)
 let draw draw_recv_stream ui matrix : unit =
   let open LTerm_geom in
   let res =
@@ -454,7 +367,7 @@ let render {ui;send;finished_drawing} (ctxt : Z80_interpreter_debugger.context) 
   (* call it *)
   log_render "LTerm_ui.draw";
   (* now immediately it calls draw and returns, not waiting*)
-  Lwt.on_success ui (fun ui ->
-      LTerm_ui.draw ui;
-      Lwt.on_success (Lwt_mvar.take finished_drawing)
-        (fun _ -> ()))
+  ui >>= fun ui -> LTerm_ui.draw ui;
+  (* First wait for finished drawing. Don't wrap this in on_success.
+     on_success returns immediately *)
+  Lwt_mvar.take finished_drawing
