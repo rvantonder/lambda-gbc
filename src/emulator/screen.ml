@@ -366,3 +366,95 @@ let get_tiles' storage =
 let render storage =
   Render.run_lwt (get_tiles' (Some storage))
 *)
+
+type t = {ui : LTerm_ui.t Lwt.t;
+          send : (Z80_interpreter_debugger.context * unit Lwt_mvar.t) option
+            -> unit;
+          finished_drawing : unit Lwt_mvar.t
+         }
+
+let draw_bg ctxt lterm_ctxt tiles =
+  log_render "Drawing bg";
+  let scroll_offset addr =
+    let addr = Addr.of_int ~width:16 addr in
+    let value = ctxt#mem_at_addr addr in
+    match value with
+    | Some v ->
+      Some (Word.to_int v |> Or_error.ok_exn)
+    | _ ->
+      None in
+  let scroll_offset_y = scroll_offset 0xFF42 in
+  let scroll_offset_x = scroll_offset 0xFF43 in
+  Background.from_tile_list
+    ?offset_y:scroll_offset_y
+    ?offset_x:scroll_offset_x
+    tiles lterm_ctxt |>
+  Background.render
+
+(** TODO: make this work with utils, but DO NOT put in
+    utils because circular build dep *)
+let storage_of_context ctxt =
+  let open Z80_env in
+  let open Option in
+  ctxt#lookup Z80_env.mem >>= fun result ->
+  match Bil.Result.value result with
+  | Bil.Mem storage -> return storage
+  | _ -> None
+
+let tiles_from_mem ctxt =
+  let open Util in
+  let storage = storage_of_context ctxt in
+  get_tiles storage
+    (*let tiles = Screen.get_tiles options storage in
+    (match tiles with
+     | Some tiles ->
+       (*Screen.print_ascii_screen tiles;*)
+       ref_tiles := tiles;
+     | None -> ())*)
+
+(** TODO: why if i raise exception here does it get ignored? *)
+let draw draw_recv_stream ui matrix : unit =
+  let open LTerm_geom in
+  let res =
+    Lwt_stream.next draw_recv_stream in
+  Lwt.on_success res (fun (ctxt,finished_drawing) ->
+      log_render "Received ctxt to draw";
+      (match tiles_from_mem ctxt with
+       | Some tiles ->
+         let size = LTerm_ui.size ui in
+         let lterm_ctxt = LTerm_draw.context matrix size in
+         (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
+           Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
+           (if size.rows < 289 || size.cols < 1430 then
+            raise (Failure "I'm not going to continue drawing. Screen too small"));*)
+         log_render "Clearing lterm";
+         LTerm_draw.clear lterm_ctxt;
+         draw_bg ctxt lterm_ctxt tiles;
+       | None -> ());
+      Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
+          log_render "Finished drawing";)
+    )
+
+let create term : t =
+  let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
+  let finished_drawing = Lwt_mvar.create () in
+  (* remove the default variable from finished_drawing *)
+
+  Lwt.on_success (Lwt_mvar.take finished_drawing) (fun _ ->
+      ());
+  let ui = LTerm_ui.create term (fun ui matrix ->
+      draw draw_recv_stream ui matrix) in
+  {ui; send = draw_send_stream; finished_drawing}
+
+
+(** send is draw_send_stream *)
+let render {ui;send;finished_drawing} (ctxt : Z80_interpreter_debugger.context) =
+  log_render "Sending ctxt";
+  send (Some (ctxt, finished_drawing));
+  (* call it *)
+  log_render "LTerm_ui.draw";
+  (* now immediately it calls draw and returns, not waiting*)
+  Lwt.on_success ui (fun ui ->
+      LTerm_ui.draw ui;
+      Lwt.on_success (Lwt_mvar.take finished_drawing)
+        (fun _ -> ()))

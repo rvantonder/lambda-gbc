@@ -15,71 +15,13 @@ module Z80_interpreter_loop = struct
     (if size.rows < 289 || size.cols < 1430 then (* XXX thumb suck *)
        raise (Failure "I'm refuse to continue drawing. Screen too small"))
 
-  let draw_bg ctxt lterm_ctxt tiles =
-    log_render "Drawing bg";
-    let scroll_offset addr =
-      let addr = Addr.of_int ~width:16 addr in
-      let value = ctxt#mem_at_addr addr in
-      match value with
-      | Some v ->
-        Some (Word.to_int v |> Or_error.ok_exn)
-      | _ ->
-        None in
-    let scroll_offset_y = scroll_offset 0xFF42 in
-    let scroll_offset_x = scroll_offset 0xFF43 in
-    Background.from_tile_list
-      ?offset_y:scroll_offset_y
-      ?offset_x:scroll_offset_x
-      tiles lterm_ctxt |>
-    Background.render
-
-  let storage_of_context ctxt =
-    let open Option in
-    ctxt#lookup Z80_env.mem >>= fun result ->
-    match Bil.Result.value result with
-    | Bil.Mem storage -> return storage
-    | _ -> None
-
-  let tiles_from_mem ctxt =
-    let storage = storage_of_context ctxt in
-    Screen.get_tiles storage
-    (*let tiles = Screen.get_tiles options storage in
-    (match tiles with
-     | Some tiles ->
-       (*Screen.print_ascii_screen tiles;*)
-       ref_tiles := tiles;
-     | None -> ())*)
-
-  (** TODO: why if i raise exception here does it get ignored? *)
-  let draw draw_recv_stream ui matrix : unit =
-    let open LTerm_geom in
-    let res =
-      Lwt_stream.next draw_recv_stream in
-    Lwt.on_success res (fun (ctxt,finished_drawing) ->
-        log_render "Received ctxt to draw";
-        (match tiles_from_mem ctxt with
-         | Some tiles ->
-           let size = LTerm_ui.size ui in
-           let lterm_ctxt = LTerm_draw.context matrix size in
-           (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
-             Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
-             (if size.rows < 289 || size.cols < 1430 then
-              raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-           log_render "Clearing lterm";
-           LTerm_draw.clear lterm_ctxt;
-           draw_bg ctxt lterm_ctxt tiles;
-         | None -> ());
-        Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
-            log_render "Finished drawing";)
-      )
-
   (** A request may be received while input is blocking (paused) or
       non-blocking. Everything stays the same, except:
       1) When blocking, an unrecognized request should not change state
       2) When non-blocking, an unrecognized request should simply step the
       interpreter. Otherwise, each unrecognized command issued will
       "skip" the frame for that cycle. *)
-  let handle_request ctxt step_frame step_insn rrender (rq,state)
+  let handle_request ctxt step_frame step_insn screen (rq,state)
     : Z80_interpreter_debugger.context Lwt.t =
     let open Debugger_types.Request in
     (match state with
@@ -112,7 +54,7 @@ module Z80_interpreter_loop = struct
       | Bp addr,_ ->
         ctxt#add_breakpoint addr
       | Render,_ ->
-        rrender ctxt;
+        Screen.render screen ctxt;
         ctxt
       | Print Mem w,_ ->
         let addr = Addr.of_int ~width:16 w in
@@ -139,7 +81,7 @@ module Z80_interpreter_loop = struct
 
   (** Blocking input loop when paused *)
   let blocking_input_loop_on_pause
-      recv_stream ctxt step_frame step_insn rrender =
+      recv_stream ctxt step_frame step_insn screen =
     let open Debugger_types.Request in
 
     log_ev_dbg_rq_rcv_in_blking "MODE ACTIVE: BLOCKING";
@@ -159,24 +101,24 @@ module Z80_interpreter_loop = struct
       | rq ->
         log_ev_dbg_rq_rcv_in_blking @@
         Debugger_types.Request.to_string rq;
-        handle_request ctxt step_frame step_insn rrender (rq,`Blocking) >>= fun ctxt ->
+        handle_request ctxt step_frame step_insn screen (rq,`Blocking) >>= fun ctxt ->
         Lwt_stream.next recv_stream >>= fun rq ->
         loop_blocking_while_paused rq ctxt in
     loop_blocking_while_paused rq ctxt
 
   let handle_debug_rq_or_step_once cmd_recv_stream ctxt step_frame step_insn
-      rrender =
+      screen =
     let open Debugger_types.Request in
     match Lwt_stream.get_available cmd_recv_stream with
     | [Pause] ->
       (** Enter blocking input mode for stream *)
       log_ev_dbg_rq_rcv_in_non_blking "Pause";
       blocking_input_loop_on_pause
-        cmd_recv_stream ctxt step_frame step_insn rrender
+        cmd_recv_stream ctxt step_frame step_insn screen
     | [rq] ->
       log_ev_dbg_rq_rcv_in_non_blking
       @@ Debugger_types.Request.to_string rq;
-      handle_request ctxt step_frame step_insn rrender (rq,`Non_blocking)
+      handle_request ctxt step_frame step_insn screen (rq,`Non_blocking)
     | [] -> return (step_insn ctxt)
     | _ ->
       (*Lwt_log.ign_fatal ~section:section_dbg
@@ -197,35 +139,16 @@ module Z80_interpreter_loop = struct
       may_continue
     =
 
-    (* Fuck mutable coords/ctxt*)
-    let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
-    let finished_drawing = Lwt_mvar.create () in
-    (* remove the default variable from finished_drawing *)
-    Lwt_mvar.take finished_drawing >>= fun _ ->
+    let screen : Screen.t = Screen.create term in
 
-    (** Create screen matrix. XXX mutable state *)
-    LTerm_ui.create term (fun ui matrix -> draw draw_recv_stream ui matrix)
-    >>= fun ui ->
-
-    let rrender ctxt =
-      (* send ctxt to inside ui. it will wait there until draw ui is called
-         below *)
-      log_render "Sending ctxt";
-      draw_send_stream (Some (ctxt, finished_drawing));
-      (* call it *)
-      log_render "LTerm_ui.draw";
-      (* now immediately it calls draw and returns, not waiting*)
-      LTerm_ui.draw ui
-    in
-
-    let rec update ui ctxt cycles_done =
+    let rec update ctxt cycles_done =
       log_ev_dbg_rq_rcv_in_non_blking "MODE ACTIVE: NON-BLOCKING";
 
       (* Non-blocking: handle input requests, or step *)
       handle_debug_rq_or_step_once
         cmd_recv_stream ctxt step_frame
         step_insn
-        rrender
+        screen
       >>= fun ctxt' ->
       let cycles_delta = ctxt'#cpu_clock - ctxt#cpu_clock in
       let cycles_done = cycles_done + cycles_delta in
@@ -238,24 +161,23 @@ module Z80_interpreter_loop = struct
          can continue. If there's nothing there, it has to block and wait *)
       then
         (log_render "Cycles done. Doing hard render";
-         rrender ctxt';
-         Lwt_mvar.take finished_drawing >>= fun _ ->
+         Screen.render screen ctxt';
 
          log_cycles @@
          sprintf "Waiting to continue. Cycles: %d" cycles_done;
 
          Lwt_mvar.take may_continue >>= fun _ ->
-         update ui ctxt' (cycles_done - 70244)
+         update ctxt' (cycles_done - 70244)
         )
         (* XXX : waiting stops the whole debug loop. another reason
            to pull it out *)
         (* not 0, but including the cycles if we went past *)
       else
         (log_cycles @@ sprintf "Cycles: %d" cycles_done;
-         update ui ctxt' cycles_done)
+         update ctxt' cycles_done)
     in
 
-    update ui ctxt 0
+    update ctxt 0
 end
 
 (** Later, recv_stream here will be input *)
