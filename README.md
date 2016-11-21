@@ -18,7 +18,7 @@ To RENDER ON DEMAND wtih `step_insn`:
 
 ## TODO
 
-Clean up `screen.ml` and `thread_cpu.ml`
+Clean up `screen.ml` and `thread_cpu.ml`. Use matrix for rendering
 
 ## Design
 
