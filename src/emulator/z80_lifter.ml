@@ -2,6 +2,9 @@ open Core_kernel.Std
 open Bap.Std
 open Format
 
+open Util.Util_word
+open Util.Util_bil
+
 module Z80 = Z80_disasm
 module Env = Z80_env
 
@@ -12,8 +15,6 @@ let highlight s =
 
 let var_of_reg = Env.of_reg
 let exp_of_reg = Fn.compose Bil.var var_of_reg
-let false_ = Bil.int Word.b0
-let true_ = Bil.int Word.b1
 
 let (!$) = var_of_reg
 let (!) = exp_of_reg
@@ -28,13 +29,7 @@ let to_16 = Bil.(cast UNSIGNED 16)
 (** cast an expression to 8 bit width (imm or reg) *)
 let to_8 = Bil.(cast UNSIGNED 8)
 
-let iw ~width = Word.of_int ~width
-(** Cast an int to a width of 8 *)
-let i8 = iw ~width:8
-(** Cast an int to a width of 16 *)
-let i16 = iw ~width:16
-
-let ( lsl1 ) = (fun x -> Bil.binop Bil.lshift x (Bil.int (i8 1)))
+let ( lsl1 ) = (fun x -> Bil.binop Bil.lshift x (i8 1))
 
 (** Store little endian, 2 bytes *)
 let store_to16 ~(dst : exp) ~(src : exp) : stmt =
@@ -65,10 +60,10 @@ let up16 w = Word.to_int w |> ok_exn |> Word.of_int ~width:16
 let calc ~r (w : int) (op : [`ADD | `SUB]) =
   let exp =
     match r,op with
-    | #Z80.Reg8.t as r8,`ADD -> Bil.(!r8 + int (i8 w))
-    | #Z80.Reg8.t as r8,`SUB -> Bil.(!r8 - int (i8 w))
-    | #Z80.Reg16.t as r16,`ADD -> Bil.(!r16 + int (i16 w))
-    | #Z80.Reg16.t as r16,`SUB -> Bil.(!r16 - int (i16 w)) in
+    | #Z80.Reg8.t as r8,`ADD -> Bil.(!r8 + i8 w)
+    | #Z80.Reg8.t as r8,`SUB -> Bil.(!r8 - i8 w)
+    | #Z80.Reg16.t as r16,`ADD -> Bil.(!r16 + i16 w)
+    | #Z80.Reg16.t as r16,`SUB -> Bil.(!r16 - i16 w) in
   Bil.(!$r := exp)
 
 let inc ~r = calc ~r 1 `ADD
@@ -87,12 +82,11 @@ let lift (stmt : Z80.Stmt.t) =
   | `XOR,[#Z80.Reg8.t as r] ->
     let exp = Bil.(!r lxor var Env.a) in
     [Bil.(!$ r := exp)] @
-    [Bil.(Env.fz := binop EQ !r (int (i8 0)))] @
+    [Bil.(Env.fz := binop EQ !r (i8 0))] @
     set_0 Env.fn @
     set_0 Env.fh @
     set_0 Env.fc
 
-  (* TODO endian correct? I don't think so...*)
   | `JP,[`Imm x;`Imm y] ->[Bil.(jmp (int Word.(x@.y)))]
 
   | `JP,[#Z80.Reg8.t as target] -> [Bil.jmp !target]
@@ -121,17 +115,17 @@ let lift (stmt : Z80.Stmt.t) =
 
   | `INC,[#Z80.Reg8.t as r] ->
     [inc ~r] @
-    [Bil.(Env.fz := !r = (int (i8 0)))] @
+    [Bil.(Env.fz := !r = (i8 0))] @
     set_0 Env.fn @
-    [Bil.(Env.fh := (!r land (int (i8 0xf))) = (int (i8 0)))]
+    [Bil.(Env.fh := (!r land (i8 0xf)) = (i8 0))]
 
   | `INC,[#Z80.Reg16.t as r] -> [inc ~r]
 
   | `DEC,[#Z80.Reg8.t as r] ->
     [dec ~r] @
-    [Bil.(Env.fz := !r = (int (i8 0)))] @
+    [Bil.(Env.fz := !r = (i8 0))] @
     set_1 Env.fn @
-    [Bil.(Env.fh := (!r land (int (i8 0xf))) = (int (i8 0xf)))]
+    [Bil.(Env.fh := (!r land (i8 0xf)) = (i8 0xf))]
 
   | `DEC,[#Z80.Reg16.t as r] -> [dec ~r]
 
@@ -179,26 +173,25 @@ let lift (stmt : Z80.Stmt.t) =
   (* Thank you http://gameboy.mongenel.com/dmg/opcodes.html *)
   | `CALL,[`Imm x; `Imm y] ->
     [Bil.(store_to16 ~dst:(var Env.sp) ~src:(var Env.pc));
-     Bil.(Env.sp := var Env.sp - int (i16 2));
-     (*Bil.(Env.pc := int Word.(x@.y));*) (*setting pc doesn't work
-                                            manually, and i don't
-                                            think this is the right
-                                            approach. jump instead *)
+     Bil.(Env.sp := var Env.sp - i16 2);
+     (* pc var in Env is not the same as pc var in the interpreter. we do not do
+        Env.sp := var Env.sp - int (w16 2) here for that reason. just jump
+        directly.*)
      Bil.(jmp (int Word.(x@.y)))
     ]
 
   | `PUSH,[#Z80.Reg16.t as r] ->
     [Bil.(store_to16 ~dst:(var Env.sp) ~src:!r);
-     Bil.(Env.sp := var Env.sp - int (i16 2))]
+     Bil.(Env.sp := var Env.sp - i16 2)]
 
   | `POP,[#Z80.Reg16.t as r] ->
-    [Bil.(Env.sp := var Env.sp + int (i16 2)); (* TODO use inc? *)
+    [Bil.(Env.sp := var Env.sp + i16 2); (* TODO use inc? *)
      Bil.(load_from16 ~dst:!$r ~src:(var Env.sp))]
 
   | `RET,[] ->
     let target = Bil.(load ~mem:(var Env.mem) ~addr:(var Env.sp)
                         LittleEndian `r16) in
-    [Bil.(Env.sp := var Env.sp + int (i16 2));
+    [Bil.(Env.sp := var Env.sp + i16 2);
      Bil.(jmp target)]
 
   (* through carry flag : http://gameboy.mongenel.com/dmg/opcodes.html *)
@@ -207,7 +200,7 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(tmp := var Env.fc);
      Bil.(Env.fc := cast_hi1 !r);
      Bil.(!$r := (lsl1 !r) lor (to_8 (var tmp)))] @
-    [Bil.(Env.fz := !r = (int (i8 0)))] @
+    [Bil.(Env.fz := !r = (i8 0))] @
     set_0 ~f:Env.fn @
     set_0 ~f:Env.fh
 
@@ -217,49 +210,49 @@ let lift (stmt : Z80.Stmt.t) =
     [Bil.(tmp := var Env.fc);
      Bil.(Env.fc := cast_hi1 !r);
      Bil.(!$r := (lsl1 !r) lor (to_8 (var tmp)))] @
-    [Bil.(Env.fz := !r = (int (i8 0)))] @
+    [Bil.(Env.fz := !r = (i8 0))] @
     set_0 ~f:Env.fn @
     set_0 ~f:Env.fh
 
   | `CP,[`Imm x] -> (* same as SUB but discards result*)
     let tmp = Var.create "tmp" reg8_t in
     [Bil.(tmp := (var Env.a) - int x)] @
-    [Bil.(Env.fz := (var tmp) = (int (i8 0)))] @
+    [Bil.(Env.fz := (var tmp) = (i8 0))] @
     set_1 Env.fh @
-    [Bil.(Env.fh := ((var tmp land (int (i8 0xf))) >
-                     ((var Env.a) land (int (i8 0xf)))))] @
-    [Bil.(Env.fc := (var tmp) < (int (i8 0)))]
+    [Bil.(Env.fh := ((var tmp land (i8 0xf)) >
+                     ((var Env.a) land (i8 0xf))))] @
+    [Bil.(Env.fc := (var tmp) < (i8 0))]
 
   | `CP,[#Z80.Reg16.t as r] ->
     let tmp = Var.create "tmp" reg8_t in
     let load_from =
       Bil.(load ~mem:(var Env.mem) ~addr:!r LittleEndian `r8) in
     [Bil.(tmp := (var Env.a) - load_from)] @
-    [Bil.(Env.fz := (var tmp) = (int (i8 0)))] @
+    [Bil.(Env.fz := (var tmp) = (i8 0))] @
     set_1 Env.fh @
-    [Bil.(Env.fh := ((var tmp land (int (i8 0xf))) >
-                     ((var Env.a) land (int (i8 0xf)))))] @
-    [Bil.(Env.fc := (var tmp) < (int (i8 0)))]
+    [Bil.(Env.fh := ((var tmp land (i8 0xf)) >
+                     ((var Env.a) land (i8 0xf))))] @
+    [Bil.(Env.fc := (var tmp) < (i8 0))]
 
   (* [r1] is always `A *)
   | `SUB,[#Z80.Reg8.t as r1; #Z80.Reg8.t as r2] ->
     [Bil.(!$r1 := !r1 - !r2)] @
-    [Bil.(Env.fz := !r1 = (int (i8 0)))] @
+    [Bil.(Env.fz := !r1 = (i8 0))] @
     set_1 Env.fh @
-    [Bil.(Env.fh := ((!r1 land (int (i8 0xf))) >
-                     ((var Env.a) land (int (i8 0xf)))))] @
-    [Bil.(Env.fc := (!r1 < (int (i8 0))))]
+    [Bil.(Env.fh := ((!r1 land (i8 0xf)) >
+                     ((var Env.a) land (i8 0xf))))] @
+    [Bil.(Env.fc := (!r1 < (i8 0)))]
 
   (* [r1] is always `A *)
   | `ADD,[#Z80.Reg8.t as r1; #Z80.Reg16.t as r2] ->
     let load_from =
       Bil.(load ~mem:(var Env.mem) ~addr:!r2 LittleEndian `r8) in
     [Bil.(!$r1 := load_from)] @
-    [Bil.(Env.fz := !r1 = (int (i8 0)))] @
+    [Bil.(Env.fz := !r1 = (i8 0))] @
     set_0 Env.fh @
-    [Bil.(Env.fh := ((!r1 land (int (i8 0xf))) >
-                     ((var Env.a) land (int (i8 0xf)))))] @
-    [Bil.(Env.fc := (!r1 < (int (i8 0))))]
+    [Bil.(Env.fh := ((!r1 land (i8 0xf)) >
+                     ((var Env.a) land (i8 0xf))))] @
+    [Bil.(Env.fc := (!r1 < (i8 0)))]
 
   | `Undef,_ -> [Bil.special ("Undefined" |> highlight)]
   | _ -> [Bil.special ("Unimplemented" |> highlight)]

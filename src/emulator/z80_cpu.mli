@@ -1,10 +1,10 @@
 open Core_kernel.Std
 open Bap.Std
 
-(** CPU model based on bap vars *)
+module Env = Z80_env
 
 module CPU : sig
-  include module type of Z80_env
-  include CPU
-  val flags : Var.Set.t (* my own addition *)
+  include CPU                     (* BAP CPU signature *)
+  include module type of Env      (* ENV *)
+  val flags : Var.Set.t           (* My own addition *)
 end

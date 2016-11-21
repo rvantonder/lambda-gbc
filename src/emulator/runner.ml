@@ -5,8 +5,6 @@ open Bap.Std
 
 module SM = Monad.State
 
-let i16 = Word.of_int ~width:16
-
 let start_event_loop refresh_rate_frame options image =
   let open Lwt in
   let open LTerm_key in
@@ -40,7 +38,6 @@ let start_event_loop refresh_rate_frame options image =
 
   let clock_loop = Thread_clock.start may_continue in
 
-  (*Lwt_log.ign_debug "Spinning up event loops...";*)
   Lwt.finalize
     (fun () -> Lwt.join [interp_loop;input_loop;clock_loop])
     (fun () -> return ()) (* TODO: cleanup. somehow Lterm_ui.quit ui *)

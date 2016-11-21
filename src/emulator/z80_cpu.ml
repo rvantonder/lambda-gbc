@@ -2,29 +2,23 @@ open Core_kernel.Std
 open Bap.Std
 module Env = Z80_env
 
+(** Satisfy BAP CPU type *)
 module CPU = struct
   include Env
 
-  (** mem is the general memory type used during lifting *)
-  let mem = mem
-  (** this pc is ignored in interpreter, it can be safely removed (but
-      this breaks the type expected by CPU currently
+  (** BAP CPU mem interface included in Env *)
+  (** BAP CPU sp interface included in Env *)
 
-      Correction: we now use pc for designating relative jumps.
-      However, pc is substituted by the interpreter 'at runtime. This
-      is not the perfect solution: ultimately, we would not want pc in
-      here, and we would want jump addresses to be resolved
-      automatically by the disassembler. But then it it is no longer
-      disassembling/lifting, but optimizing. So, we stick with this
-      convention.*)
-  let pc = pc
-  let sp = sp
+  (** BAP CPU interface does not require pc. However, we use a
+      pc variable when lifting jump statements, which is dynamically
+      substituted at runtime.*)
 
+  (** BAP CPU gpr interface *)
   let gpr = Var.Set.of_list [
       a; b; c; d; e; f; h; l;
       i; r; af; bc; de; hl; pc; sp ]
 
-  (** STATE of flags *)
+  (** Flags. Not part of BAP CPU interface *)
   let flags = Var.Set.of_list [
       fz; (* zero *)
       fc; (* carry *)
@@ -34,26 +28,25 @@ module CPU = struct
       fh  (* half carry *)
     ]
 
+  (** BAP CPU flag interface *)
   let zf = fz
   let cf = fc
-  let nf = fz (*TODO*)
-  let vf = fc (*TODO*)
-
-  let addr_of_pc mem = Addr.(Memory.min_addr mem ++ 8)
+  let nf = fn
+  let vf = fz (* give it some flag, or it fails *)
 
   let is = Var.same
 
+  (** BAP CPU predicate interface *)
   let is_reg r = Set.mem gpr (Var.base r)
   let is_flag reg = Set.mem flags (Var.base reg)
 
   let is_sp = is sp
-  let is_bp _ = false (*TODO / unused *)
+  let is_bp _ = false
   let is_pc = is pc
-
-  let is_mem = is mem
 
   let is_zf = is fz
   let is_cf = is fc
-  let is_nf = is nf (*TODO / unused *)
-  let is_vf = is vf (*TODO / unused *)
+  let is_nf = is fn
+  let is_vf _ = false
+  let is_mem = is mem
 end

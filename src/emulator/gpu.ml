@@ -1,7 +1,10 @@
 open Core_kernel.Std
 open Bap.Std
-open Util
 open Logging
+
+open Util
+open Util.Util_word
+
 
 let scanline_counter = ref 456
 
@@ -24,13 +27,11 @@ let write_word addr w (ctxt : Z80_interpreter_debugger.context) interp :
 Z80_interpreter_debugger.context option =
   let open Option in
   let open Z80_cpu.CPU in
-  let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
-      ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
-  let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
   ctxt#lookup (Z80_env.mem) >>= fun result ->
   match Bil.Result.value result with
   | Bil.Mem storage ->
-    let start = interp#eval stmt in
+    let update_mem_stmt = Util_bil.store_ addr w in
+    let start = interp#eval [update_mem_stmt] in
     (* TODO may need other interp so things dont get caught later *)
     let ctxt' = Monad.State.exec start ctxt in
     Some ctxt'
@@ -45,7 +46,7 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
   | false ->
     (*set the mode to 1 during lcd disabled and reset scanline*)
     scanline_counter := 456;
-    let ly = Addr.of_int ~width:16 0xFF44 in
+    let ly = w16 0xFF44 in
     write_word ly (w8 0) ctxt interp >>= fun ctxt' ->
     let status' = Word.(lcdstatus land w8 252) in
     let status' = set_bit status' 0 in
@@ -53,7 +54,7 @@ let set_lcd_status (ctxt : Z80_interpreter_debugger.context) interp :
              Reset scanline and set mode to 1";
     write_word (w16 0xFF41) status' ctxt' interp
   | true ->
-    let ly = Addr.of_int ~width:16 0xFF44 in
+    let ly = w16 0xFF44 in
     ctxt#mem_at_addr ly >>= fun currentline ->
     let current_mode = Word.(lcdstatus land w8 3) in
     let mode,status',reqint =
@@ -134,7 +135,7 @@ let update interp (ctxt: Z80_interpreter_debugger.context) cycles =
          cycles
          !scanline_counter;
 
-       let ly = Addr.of_int ~width:16 0xFF44 in
+       let ly = w16 0xFF44 in
        ctxt#mem_at_addr ly >>= fun currentline ->
 
        log_gpu @@ sprintf "Current scanline: %a" Word.pps currentline;

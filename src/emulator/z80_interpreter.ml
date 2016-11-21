@@ -5,6 +5,7 @@ open Format
 open Z80_disassembler.Hunk
 open Options
 open Lwt
+open Util.Util_word
 
 module Lifter = Z80_lifter
 
@@ -21,7 +22,7 @@ let normalize = String.filter ~f:(function
     | '\n' | '\t' -> false
     | _ -> true)
 
-let i16 = Word.of_int ~width:16
+let w16 = Word.of_int ~width:16
 
 (** Disassemble and decode the next hunk *)
 let fetch_hunk image pc =
@@ -69,7 +70,7 @@ let sync reg =
 
 (** Set pc to addr *)
 let set_pc ctxt (addr : int) =
-  ctxt#with_pc (Bil.Imm (i16 addr))
+  ctxt#with_pc (Bil.Imm (w16 addr))
 
 let sync_if_needed ctxt bil_stmt =
   match bil_stmt with
@@ -84,7 +85,7 @@ let get_pc ctxt =
 (** Add x to pc and return updated ctxt *)
 let add_pc ctxt (x : int) =
   match ctxt#pc with
-  | Bil.Imm w -> ctxt#with_pc (Bil.Imm (Word.(w+(i16 x))))
+  | Bil.Imm w -> ctxt#with_pc (Bil.Imm (Word.(w+(w16 x))))
   | _ -> ctxt
 
 (** Substitute pc with value *)
@@ -107,16 +108,16 @@ class memory image options : Bil.storage = object(self : 's)
     let position = Word.to_int key |> ok_exn in
     if options.di then
       printf "position: 0x%04x\n" position;
-    let i8 = Word.of_int ~width:8 in
+    let w8 = Word.of_int ~width:8 in
     match Z80_image.get_bytes image ~position ~size:1 with
     | [| |] ->
       (match position with
        (* XXX Hard-code LY to pass scanline wait check.
           0x90 = 144, the last row *)
-       (*| 0xFF44 -> Some (i8 0x90)*)
+       (*| 0xFF44 -> Some (w8 0x90)*)
        | _ -> None)
     | [|v|] ->
-      Some (i8 (UInt8.to_int v))
+      Some (w8 (UInt8.to_int v))
     | _ -> failwith "1 byte requested, more than 1 returned."
 
   method private detect_write key data =
@@ -416,26 +417,26 @@ class ['a] z80_interpreter image options = object(self)
     sprintf "Interrupt enabled. CPU servicing interrupt %d" i;
     get () >>= fun ctxt ->
     update (fun ctxt -> ctxt#set_interrupts_enabled false) >>= fun () ->
-    match ctxt#mem_at_addr (Util.w16 0xFF0F) with
+    match ctxt#mem_at_addr (w16 0xFF0F) with
     | Some req ->
       let req = Util.reset_bit req i in
-      self#wwrite_word (Util.w16 0xFF0F) req >>= fun ctxt ->
+      self#wwrite_word (w16 0xFF0F) req >>= fun ctxt ->
       let call_interrupt addr =
         let store_to16 ~(dst : exp) ~(src : exp) : stmt =
           let store_to =
             Bil.(store ~mem:(var Z80_env.mem)
                    ~addr:dst src LittleEndian `r16) in
           Bil.(Z80_env.mem := store_to) in
-        let x = (Util.w8 0x0) in
+        let x = (w8 0x0) in
             [Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc));
-             Bil.(Z80_env.sp := var Z80_env.sp - int (i16 2));
+             Bil.(Z80_env.sp := var Z80_env.sp - int (w16 2));
              Bil.(jmp (int Word.(x@.addr)))
             ] in
       (match i with
-       | 0 -> self#eval (call_interrupt @@ Util.w8 0x40) >>= fun () -> get ()
-       | 1 -> self#eval (call_interrupt @@ Util.w8 0x48) >>= fun () -> get ()
-       | 2 -> self#eval (call_interrupt @@ Util.w8 0x50) >>= fun () -> get ()
-       | 3 -> self#eval (call_interrupt @@ Util.w8 0x60) >>= fun () -> get ()
+       | 0 -> self#eval (call_interrupt @@ w8 0x40) >>= fun () -> get ()
+       | 1 -> self#eval (call_interrupt @@ w8 0x48) >>= fun () -> get ()
+       | 2 -> self#eval (call_interrupt @@ w8 0x50) >>= fun () -> get ()
+       | 3 -> self#eval (call_interrupt @@ w8 0x60) >>= fun () -> get ()
        | _ -> failwith "No such interrupt to service"
       )
     | None -> failwith "No req in service_interrupt"
@@ -446,9 +447,9 @@ class ['a] z80_interpreter image options = object(self)
     match ctxt#interrupts_enabled with
     | true ->
       log_interrupt "Interrupts ENABLED";
-      (match ctxt#mem_at_addr (Util.w16 0xFF0F) with
+      (match ctxt#mem_at_addr (w16 0xFF0F) with
       | Some req ->
-        if req > (Util.w8 0) then
+        if req > (w8 0) then
           List.fold [0;1;2;3;4;5;6;7] ~init:(return ctxt)
             ~f:(fun acc (bit as i) ->
               match Util.test_bit req bit with
@@ -456,7 +457,7 @@ class ['a] z80_interpreter image options = object(self)
               | true ->
                 log_interrupt @@ sprintf "Interrupt %d requested" i;
                 acc >>= fun ctxt ->
-                (match ctxt#mem_at_addr (Util.w16 0xFFFF) with
+                (match ctxt#mem_at_addr (w16 0xFFFF) with
                 | Some enabled ->
                    if Util.test_bit enabled bit then
                      self#service_interrupt i

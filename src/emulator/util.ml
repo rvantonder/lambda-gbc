@@ -6,22 +6,54 @@ open Format
 open Gbc_segment
 open Options
 
-let w8 = Word.of_int ~width:8
-let w16 = Word.of_int ~width:16
+module Env = Z80_env
+
+module Bap_word = Word
+module Bap_bil = Bil
+
+module Util_word : sig
+  val w8  : int -> word
+  val w16 : int -> word
+end = struct
+  let w ~width = Word.of_int ~width
+  let w8  = w ~width:8
+  let w16 = w ~width:16
+end
+
+open Util_word
+
+module Util_bil : sig
+  val i8  : int -> exp
+  val i16 : int -> exp
+  val true_  : exp
+  val false_ : exp
+  val store_ : addr:addr -> word -> stmt
+end = struct
+  let i = Bil.int
+  let i8 x  = i (w8 x)
+  let i16 x = i (w16 x)
+  let false_ = i Word.b0
+  let true_  = i Word.b1
+  let store_ ~addr v =
+    (* TODO: fail if addr or v lie outside ranges *)
+    Bil.(Env.mem := Bil.store ~mem:(Bil.var Env.mem)
+             ~addr:(i addr) (i v) LittleEndian `r8)
+end
+
 
 let test_bit v bit_pos =
-  let mask = Word.(w8 1 lsl w8 bit_pos) in
+  let mask = Bap_word.(w8 1 lsl w8 bit_pos) in
   (*log_gpu @@ sprintf "test_bit @ %d : mask: %a v: %a"
-    bit_pos Word.pps mask Word.pps v;*)  (*TODO fix*)
-  Word.(mask land v) = Word.(w8 1 lsl w8 bit_pos)
+    bit_pos Word.pps mask Word.pps v;*)  (*TODO fix logging*)
+  Bap_word.(mask land v) = Bap_word.(w8 1 lsl w8 bit_pos)
 
 let set_bit v bit_pos =
-  let mask = Word.(w8 1 lsl w8 bit_pos) in
-  Word.(mask lor v)
+  let mask = Bap_word.(w8 1 lsl w8 bit_pos) in
+  Bap_word.(mask lor v)
 
 let reset_bit v bit_pos =
-  let mask = Word.(w8 1 lsl w8 bit_pos) in
-  Word.(mask land (lnot v))
+  let mask = Bap_word.(w8 1 lsl w8 bit_pos) in
+  Bap_word.(mask land (lnot v))
 
 let time tag f options =
   let t = Unix.gettimeofday () in
@@ -37,7 +69,7 @@ let dump_storage storage s e =
       if addr_int % 32 = 0 then printf "\n";
       match storage#load addr with
       | Some word ->
-        printf "%02x " @@ (Word.to_int word |> ok_exn)
+        printf "%02x " @@ (Bap_word.to_int word |> ok_exn)
       (*printf "\t\t%a -> %a\n" Addr.pp addr Word.pp word*)
       | None -> printf "00 ");
   printf "\n"
