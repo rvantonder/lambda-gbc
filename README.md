@@ -33,10 +33,16 @@ ev_dbg_rq_rcv_in_blking
 ev_dbg_rq_rcv_in_non_blking
 ```
 
+# Debug settings for screen:
+
+`LWT_LOG="render -> debug; clock -> debug" ./driver.native --bootrom --nr --speed 0.0`
+
 ## TODO
 
 Use `ctxt#update` to bind mem variable to a new bil result (storage)
 Refactor memory writing to be like `wwrite_word` in interpreter
+
+be careful of on_success use in screen.
 
 ### GPU:
 
