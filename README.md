@@ -18,13 +18,13 @@ To RENDER ON DEMAND wtih `step_insn`:
 
 ## TODO
 
+` LWT_LOG="render -> debug; clock -> debug" ./driver.native --bootrom --nr --speed 0.0`
+
 Clean up `screen.ml` and `thread_cpu.ml`. Use matrix for rendering
 
 ## Design
 
 Double synchrony. 1) Clock says emulation may continue after enough time has elapsed (60 hz). 2) drawing must happen after every 70224 instructions, regardless of what clock says.
-
-
 
 ## Debug labels
 
