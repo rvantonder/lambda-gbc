@@ -26,10 +26,12 @@ let start_event_loop refresh_rate_frame options image =
   (* If debugging is enabled, pause NOW *)
   send_stream (Some Debugger_types.Request.Pause);
 
- let may_continue = Lwt_mvar.create () in
- (* for testing. take the variable so later thread doesn't have opportunity to
-    continue*)
- Lwt_mvar.take may_continue |> fun r -> Lwt.on_termination r ident;
+  let may_continue = Lwt_mvar.create () in
+  (* for testing. take the variable so later thread doesn't have opportunity to
+     continue*)
+
+  (* TODO return immediately, racy *)
+  Lwt_mvar.take may_continue |> fun r -> Lwt.on_termination r ident;
 
   let interp_loop = Thread_cpu.set_up_debug_interp_loop
       options image term recv_stream send_stream may_continue in

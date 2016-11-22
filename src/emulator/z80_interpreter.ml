@@ -545,17 +545,3 @@ let print_ctxt ctxt options =
           printf "Var: %a = %a\n" Var.pp v Word.pp w
       | Bil.Mem s -> () (* Our example doesn't use memory *)
       | Bil.Bot -> () (* Our example has no undefined results *))
-
-(*
-let render options ctxt =
-  let open Lwt in
-  match ctxt#lookup (Z80_env.mem) with
-  | Some result ->
-    (match Bil.Result.value result with
-     | Bil.Mem storage ->
-       (*Z80_image.dump_vram storage*)
-       if options.no_render then return ()
-       else Screen.render storage
-     | _ -> return ())
-  | _ -> return ()
-*)

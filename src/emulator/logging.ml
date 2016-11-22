@@ -17,6 +17,9 @@ let log_cycles = log cycles_section
 let clock_section = make "clock"
 let log_clock = log clock_section
 
+let ev_cpu_section = make "ev_cpu"
+let log_ev_cpu = log ev_cpu_section
+
 let ev_cpu_add_bp_section = make "ev_cpu_add_bp"
 let log_ev_cpu_add_bp = log ev_cpu_add_bp_section
 

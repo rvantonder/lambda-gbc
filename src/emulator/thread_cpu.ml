@@ -1,6 +1,7 @@
 open Core_kernel.Std
 open Options
 open Bap.Std
+open Util.Util_word
 
 module SM = Monad.State
 
@@ -121,8 +122,8 @@ module Z80_interpreter_loop = struct
       handle_request ctxt step_frame step_insn screen (rq,`Non_blocking)
     | [] -> return (step_insn ctxt)
     | _ ->
-      (*Lwt_log.ign_fatal ~section:section_dbg
-        "Do not handle more than one event!";*)
+      Lwt_log.ign_fatal ~section:(Lwt_log.Section.make "fatal")
+        "Do not handle more than one event!";
       failwith "Bad: more than one rq in queue"
 
 
@@ -145,6 +146,7 @@ module Z80_interpreter_loop = struct
       log_ev_dbg_rq_rcv_in_non_blking "MODE ACTIVE: NON-BLOCKING";
 
       (* Non-blocking: handle input requests, or step *)
+      (* Lwt.return @@ step_insn ctxt *) (* No debug *)
       handle_debug_rq_or_step_once
         cmd_recv_stream ctxt step_frame
         step_insn
@@ -160,14 +162,20 @@ module Z80_interpreter_loop = struct
          may_continue at 60hz, and when that something is there, this loop
          can continue. If there's nothing there, it has to block and wait *)
       then
-        (log_render "Cycles done. Doing hard render";
-         Screen.render screen ctxt' >>= fun () ->
+        (
+          (match options.no_render with
+           | false ->
+             log_render "Cycles done. Doing hard render";
+             Screen.render screen ctxt'
+           | true ->
+             log_render "Cycles done. Rendering off.";
+             Lwt.return ()) >>= fun () ->
 
-         log_cycles @@
-         sprintf "Waiting to continue. Cycles: %d" cycles_done;
+          log_cycles @@
+          sprintf "Waiting to continue. Cycles: %d" cycles_done;
 
-         Lwt_mvar.take may_continue >>= fun _ ->
-         update ctxt' (cycles_done - 70244)
+          Lwt_mvar.take may_continue >>= fun _ ->
+          update ctxt' (cycles_done - 70244)
         )
         (* XXX : waiting stops the whole debug loop. another reason
            to pull it out *)
@@ -195,9 +203,6 @@ let create_base_interp_loop
   let step_insn ctxt = SM.exec interp#step_insn ctxt in
   Z80_interpreter_loop.run interp step_insn step_frame options ctxt
     image term recv_stream may_continue
-
-let i16 = Word.of_int ~width:16
-
 
 (* TODO: make sure the command thing is only enabled for debugger 'view'. This doesn't type check otherwise
    let set_up_interp_loop
@@ -241,7 +246,7 @@ let set_up_debug_interp_loop options
     else 0x100,Boot.ready_state in
 
   let ctxt = new Z80_interpreter_debugger.context image options in
-  let ctxt = ctxt#with_pc (Bil.Imm (i16 init_pc)) in
+  let ctxt = ctxt#with_pc (Bil.Imm (w16 init_pc)) in
   let start = interp#eval stmts in
 
   let ctxt = Monad.State.exec start ctxt in
