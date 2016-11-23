@@ -47,7 +47,7 @@ class ['a] z80_interpreter_debugger image options send_stream =
     method! step_insn =
       super#step_insn >>= fun () ->
       get () >>= fun ctxt ->
-      let pc = match ctxt#pc with
+      (*let pc = match ctxt#pc with
         | Bil.Imm w -> Word.to_int w |> ok_exn
         | _ ->
           log_ev_cpu_dbg_pc_undef "PC undefined!";
@@ -55,7 +55,7 @@ class ['a] z80_interpreter_debugger image options send_stream =
       if (List.exists ctxt#breakpoints ~f:((=) pc)) then
         (log_ev_cpu_bp_trigger @@ sprintf "BP hit: 0x%x" pc;
          log_ev_cpu_rq_snd "Pause";
-         send_stream (Some Request.Pause));
+         send_stream (Some Request.Pause));*)
       return ()
 
     (** In debug mode, do not call super eval_special, which wil terminate and say

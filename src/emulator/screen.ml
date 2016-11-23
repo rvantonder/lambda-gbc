@@ -144,9 +144,9 @@ let tiles_of_idxs storage base idxs : 'a list list Or_error.t =
               inner_acc >>= fun inner_acc ->
               return (word::inner_acc)
             | None ->
-              log_render @@
+              (*log_render @@
               sprintf "Warning tiles_of_idxs : word 0x%04x does \
-                       not exist in memory" addr_int;
+                       not exist in memory" addr_int;*)
               Or_error.error_string "Could not read memory. Bailing")
       in
       tile >>= fun tile ->
@@ -182,17 +182,17 @@ let get_tiles storage =
   storage#load (Addr.of_int ~width:16 0xFF40) >>= fun lcdc ->
   let mask = Word.of_int ~width:8 0x8 in
   (if Word.(lcdc land mask = (zero 8)) then
-     (log_render "selecting vram tile MAP 0";
+     ((*log_render "selecting vram tile MAP 0";*)
       "vram-tile-map-0")
    else (
-     log_render "selecting vram tile MAP 1";
+     (*log_render "selecting vram tile MAP 1";*)
      "vram-tile-map-1")
   ) |> fun map_display_select ->
   let mask = Word.of_int ~width:8 0x10 in
   (if Word.(lcdc land mask = (zero 8)) then
-     (log_render "selecting vram tile SET 0";
+     ((*log_render "selecting vram tile SET 0";*)
       "vram-tile-set-0") (*-127 - 128*)
-   else (log_render "selecting vram tile SET 1";
+   else ((*log_render "selecting vram tile SET 1";*)
          "vram-tile-set-1")) |> fun data_display_select -> (* 0 - 255 *)
 
 
@@ -209,7 +209,7 @@ let get_tiles storage =
   (* Nasty fucking vram hack just reading first addr *)
   let ft = List.nth_exn range 0 in
   let ft = Addr.of_int ~width:16 ft in
-  log_render @@ sprintf "HACK: read MAP addr %a" Word.pps ft;
+  (*log_render @@ sprintf "HACK: read MAP addr %a" Word.pps ft;*)
   match storage#load ft with
   | Some _ ->
     (** If a word does not exist in memory, bail and return None *)
@@ -226,7 +226,7 @@ let get_tiles storage =
        tile 1024 : 16 bytes *)
 
     let base = Addr.of_int ~width:16 data_display_segment.pos in
-    log_render @@ sprintf "HACK2: read DATA SET %a" Word.pps base;
+    (*log_render @@ sprintf "HACK2: read DATA SET %a" Word.pps base;*)
     (match storage#load base with
      | Some _ ->
        let tiles = tiles_of_idxs storage base idxs in
@@ -255,18 +255,18 @@ let get_tiles storage =
        (match tiles with
         | Ok tiles ->
           let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
-          log_render @@ "Firing tiles_to_pixel_grid";
+          (*log_render @@ "Firing tiles_to_pixel_grid";*)
           let tiles' = tiles_to_pixel_grid tiles' in
           (*print_ascii_screen tiles';*)
           return tiles'
         | Error _ ->
-          log_render "VRAM does not contain values for 1024 tiles.";
+          (*log_render "VRAM does not contain values for 1024 tiles.";*)
           None)
      | None ->
-       log_render "Fuck this, no VRAM SET hack.";
+       (*log_render "Fuck this, no VRAM SET hack.";*)
        None )
   | None ->
-    log_render "Fuck this, no VRAM MAP hack.";
+    (*log_render "Fuck this, no VRAM MAP hack.";*)
     None
 
 
@@ -286,7 +286,7 @@ type t = {ui : LTerm_ui.t Lwt.t;
          }
 
 let draw_bg ctxt lterm_ctxt tiles =
-  log_render "Drawing bg";
+  (*log_render "Drawing bg";*)
   let scroll_offset addr =
     let addr = Addr.of_int ~width:16 addr in
     let value = ctxt#mem_at_addr addr in
@@ -331,7 +331,7 @@ let draw draw_recv_stream ui matrix : unit =
   let res =
     Lwt_stream.next draw_recv_stream in
   Lwt.on_success res (fun (ctxt,finished_drawing) ->
-      log_render "Received ctxt to draw";
+      (*log_render "Received ctxt to draw";*)
       (match tiles_from_mem ctxt with
        | Some tiles ->
          let size = LTerm_ui.size ui in
@@ -340,12 +340,12 @@ let draw draw_recv_stream ui matrix : unit =
            Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
            (if size.rows < 289 || size.cols < 1430 then
             raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-         log_render "Clearing lterm";
+         (*log_render "Clearing lterm";*)
          LTerm_draw.clear lterm_ctxt;
          draw_bg ctxt lterm_ctxt tiles;
        | None -> ());
       Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
-          log_render "Finished drawing";)
+          ()(*log_render "Finished drawing";*))
     )
 
 let create term : t =
@@ -362,10 +362,10 @@ let create term : t =
 
 (** send is draw_send_stream *)
 let render {ui;send;finished_drawing} (ctxt : Z80_interpreter_debugger.context) =
-  log_render "Sending ctxt";
+  (*log_render "Sending ctxt";*)
   send (Some (ctxt, finished_drawing));
   (* call it *)
-  log_render "LTerm_ui.draw";
+  (*log_render "LTerm_ui.draw";*)
   (* now immediately it calls draw and returns, not waiting*)
   ui >>= fun ui -> LTerm_ui.draw ui;
   (* First wait for finished drawing. Don't wrap this in on_success.

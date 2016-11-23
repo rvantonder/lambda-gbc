@@ -17,8 +17,8 @@ let is_lcd_enabled ctxt =
   let open Option in
   match ctxt#mem_at_addr (w16 0xFF40) with
   | Some lcd_byte ->
-    log_gpu @@ sprintf "is_lcd_enabled testing addr %a. value is %a"
-    Word.pps (w16 0xFF40) Word.pps lcd_byte;
+    (*log_gpu @@ sprintf "is_lcd_enabled testing addr %a. value is %a"
+    Word.pps (w16 0xFF40) Word.pps lcd_byte;*)
       test_bit lcd_byte 7
   | None -> false
 
