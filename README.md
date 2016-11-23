@@ -16,9 +16,31 @@ To RENDER ON DEMAND wtih `step_insn`:
 * wait
 * render
 
+## What is going on with speed?
+
+Need to add a value permanently to memory if failed and found in image. 
+
+Left off:
+
+ - ~.18 with rendering on, gpu on, no logging
+ - ~.087 with rendering off, gpu on, no logging
+ - ~.05 with rendering off, gpu off, no logging
+ 
+ Breakdown of slow down:
+ 
+ - RENDERING: adds .09+
+ - GPU :      adds .037
+ - INTERPRETER:    .05
+ 
+ For making interpreter faster, work in `only interpreter optimize speed`
+ 
+
 ## TODO
 
 ` LWT_LOG="render -> debug; clock -> debug" ./driver.native --bootrom --nr --speed 0.0`
+
+Need to know: if i remove clock, does it go fast enough? So we can diagnose the slow problem: is it because
+of the clock in the same thread? 
 
 Clean up `screen.ml` and `thread_cpu.ml`. Use matrix for rendering
 
@@ -50,7 +72,9 @@ ev_dbg_rq_rcv_in_non_blking
 ## TODO
 
 Use `ctxt#update` to bind mem variable to a new bil result (storage)
-Refactor memory writing to be like `wwrite_word` in interpreter
+Refactor memory writing to be like `wwrite_word` in interpreter.
+
+Even better: use `Stmt.eval` with context like in sync function.
 
 be careful of on_success use in screen.
 
