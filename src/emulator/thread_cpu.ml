@@ -143,7 +143,7 @@ module Z80_interpreter_loop = struct
     let screen : Screen.t = Screen.create term in
 
     let rec update ctxt cycles_done =
-      log_ev_dbg_rq_rcv_in_non_blking "MODE ACTIVE: NON-BLOCKING";
+      (*log_ev_dbg_rq_rcv_in_non_blking "MODE ACTIVE: NON-BLOCKING";*)
 
       (* Non-blocking: handle input requests, or step *)
       (* Lwt.return @@ step_insn ctxt *) (* No debug *)
@@ -155,7 +155,7 @@ module Z80_interpreter_loop = struct
       let cycles_delta = ctxt'#cpu_clock - ctxt#cpu_clock in
       let cycles_done = cycles_done + cycles_delta in
 
-      Gpu.update interp ctxt' cycles_delta |> fun ctxt' ->
+      Gpu.update ctxt' cycles_delta |> fun ctxt' ->
 
       if cycles_done >= 70244
       (* may_continue is a synchronising variable. We put something into
@@ -165,14 +165,14 @@ module Z80_interpreter_loop = struct
         (
           (match options.no_render with
            | false ->
-             log_render "Cycles done. Doing hard render";
+             (*log_render "Cycles done. Doing hard render";*)
              Screen.render screen ctxt'
            | true ->
-             log_render "Cycles done. Rendering off.";
+             (*log_render "Cycles done. Rendering off.";*)
              Lwt.return ()) >>= fun () ->
 
-          log_cycles @@
-          sprintf "Waiting to continue. Cycles: %d" cycles_done;
+          (*log_cycles @@
+          sprintf "Waiting to continue. Cycles: %d" cycles_done;*)
 
           Lwt_mvar.take may_continue >>= fun _ ->
           update ctxt' (cycles_done - 70244)
@@ -181,7 +181,7 @@ module Z80_interpreter_loop = struct
            to pull it out *)
         (* not 0, but including the cycles if we went past *)
       else
-        (log_cycles @@ sprintf "Cycles: %d" cycles_done;
+        ((*log_cycles @@ sprintf "Cycles: %d" cycles_done;*)
          update ctxt' cycles_done)
     in
 

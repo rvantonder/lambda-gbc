@@ -38,7 +38,7 @@ class ['a] z80_interpreter_debugger image options send_stream =
     inherit ['a] Z80_interpreter.z80_interpreter image options as super
 
     method! eval stmts =
-      log_ev_cpu_dbg_eval @@ Bil.to_string stmts;
+      (*log_ev_cpu_dbg_eval @@ Bil.to_string stmts;*)
       super#eval stmts
 
     (** Must call super#step_insn first. Consider that you may have stopped on a
