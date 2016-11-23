@@ -32,7 +32,15 @@ Left off:
  - GPU :      adds .037
  - INTERPRETER:    .05
  
- For making interpreter faster, work in `only interpreter optimize speed`
+ First fix up rendering. it's a disaster. Do lists right.
+ 
+ Each instruction updates gpu. that's an expensive cost: extra memory reads/writes per instruction. Can we optimize:
+ 
+ a) how we do storage? bypass storage and use a mutable array outside of ctxt. how much is the speed gain?
+ b) minimize read/writes in gpu.
+ 
+ For making interpreter faster, work in `only interpreter optimize speed`. Ideas: decode+lift up front (don't repeatedly
+ lift re-encountered insns). 
  
 
 ## TODO
