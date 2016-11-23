@@ -18,16 +18,18 @@ To RENDER ON DEMAND wtih `step_insn`:
 
 ## What is going on with speed?
 
+Need to add a value permanently to memory if failed and found in image. 
+
 Left off:
 
- - ~.21 with rendering on, gpu on, no logging
- - ~.12 with rendering off, gpu on, no logging
+ - ~.18 with rendering on, gpu on, no logging
+ - ~.087 with rendering off, gpu on, no logging
  - ~.05 with rendering off, gpu off, no logging
  
  Breakdown of slow down:
  
- - RENDERING: adds .09
- - GPU :      adds .07
+ - RENDERING: adds .09+
+ - GPU :      adds .037
  - INTERPRETER:    .05
  
  For making interpreter faster, work in `only interpreter optimize speed`
