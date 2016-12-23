@@ -23,12 +23,16 @@ Need to add a value permanently to memory if failed and found in image.
 Left off:
 
  - ~.18 with rendering on, gpu on, no logging
+
  - ~.087 with rendering off, gpu on, no logging
  - ~.05 with rendering off, gpu off, no logging
  
  Breakdown of slow down:
  
- - RENDERING: adds .09+
+ - RENDERING: adds .09+<br>
+        ~3/4ths of slow down comes from draw_bg and lambda-term rendering. TODO: check if from_tile_list is a big culprit. I suspect the actual lambda term rendering is not so slow, because visually the blocks don't seem to delay too much (and we render each pixel in turn).
+       ~1/4th comes from get_tiles
+       
  - GPU :      adds .037
  - INTERPRETER:    .05
  
