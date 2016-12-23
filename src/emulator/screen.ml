@@ -318,9 +318,8 @@ let (||>) f g = Lwt.on_success f g
 let tiles_from_mem ctxt clock_stream =
   let open Util in
   let storage = storage_of_context ctxt in
-  (*Lwt_mvar.take clock_stream >>= fun _ ->
-    Lwt.return @@ get_tiles storage*)
-  get_tiles storage
+  Lwt_mvar.take clock_stream >>= fun _ ->
+  Lwt.return @@ get_tiles storage
 
 (*let tiles = Screen.get_tiles options storage in
   (match tiles with
@@ -336,21 +335,21 @@ let draw draw_recv_stream ui matrix clock_stream : unit =
   let open LTerm_geom in
   Lwt_stream.next draw_recv_stream ||> fun (ctxt,finished_drawing) ->
     (*log_render "Received ctxt to draw";*)
-    tiles_from_mem ctxt clock_stream |> fun tiles ->
-    (match tiles with
-     | Some tiles ->
-       let size = LTerm_ui.size ui in
-       let lterm_ctxt = LTerm_draw.context matrix size in
-       (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
-         Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
-         (if size.rows < 289 || size.cols < 1430 then
-          raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-       (*log_render "Clearing lterm";*)
-       LTerm_draw.clear lterm_ctxt;
-       draw_bg ctxt lterm_ctxt tiles;
-     | None -> ());
-    Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
-        ()(*log_render "Finished drawing";*))
+    tiles_from_mem ctxt clock_stream ||> fun tiles ->
+      (match tiles with
+       | Some tiles ->
+         let size = LTerm_ui.size ui in
+         let lterm_ctxt = LTerm_draw.context matrix size in
+         (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
+           Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
+           (if size.rows < 289 || size.cols < 1430 then
+            raise (Failure "I'm not going to continue drawing. Screen too small"));*)
+         (*log_render "Clearing lterm";*)
+         LTerm_draw.clear lterm_ctxt;
+         draw_bg ctxt lterm_ctxt tiles;
+       | None -> ());
+      Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
+          ()(*log_render "Finished drawing";*))
 
 let create clock_stream term : t =
   let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
