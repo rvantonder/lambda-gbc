@@ -318,7 +318,7 @@ let (||>) f g = Lwt.on_success f g
 let tiles_from_mem ctxt clock_stream =
   let open Util in
   let storage = storage_of_context ctxt in
-  Lwt_mvar.take clock_stream >>= fun _ ->
+  (*Lwt_mvar.take clock_stream >>= fun _ ->*)
   Lwt.return @@ get_tiles storage
 
 (*let tiles = Screen.get_tiles options storage in

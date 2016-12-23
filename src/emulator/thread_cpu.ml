@@ -147,6 +147,7 @@ module Z80_interpreter_loop = struct
 
       (* Non-blocking: handle input requests, or step *)
       (* Lwt.return @@ step_insn ctxt *) (* No debug *)
+
       handle_debug_rq_or_step_once
         cmd_recv_stream ctxt step_frame
         step_insn
@@ -168,9 +169,9 @@ module Z80_interpreter_loop = struct
              (*log_render "Cycles done. Doing hard render";*)
              (*Lwt_mvar.take may_continue >>= fun _ ->*) (* record time just
                                                             before render*)
-             Lwt_mvar.take may_continue >>= fun _ ->
+             (*Lwt_mvar.take may_continue >>= fun _ ->*)
              Screen.render screen ctxt' may_continue >>= fun res ->
-             Lwt_mvar.take may_continue >>= fun _ ->
+             (*Lwt_mvar.take may_continue >>= fun _ ->*)
              Lwt.return res
            | true ->
              (*log_render "Cycles done. Rendering off.";*)
@@ -179,7 +180,7 @@ module Z80_interpreter_loop = struct
           (*log_cycles @@
             sprintf "Waiting to continue. Cycles: %d" cycles_done;*)
 
-          (*Lwt_mvar.take may_continue >>= fun _ ->*)
+          Lwt_mvar.take may_continue >>= fun _ ->
           update ctxt' (cycles_done - 70244)
         )
         (* XXX : waiting stops the whole debug loop. another reason

@@ -151,6 +151,9 @@ class context image options = object(self : 's)
 
   val current_bil = []
 
+  val insn_cache : (Z80_disassembler.Hunk.t * bil) option array =
+    Array.create ~len:0x1000 None
+
   (** Number of instructions executed *)
   val k = 0
 
@@ -162,6 +165,8 @@ class context image options = object(self : 's)
   method k = k
 
   method current_hunk = current_hunk
+
+  method current_bil = current_bil
 
   (** Set of addrs for which we have memory contents in the
       interpreter storage *)
@@ -182,9 +187,9 @@ class context image options = object(self : 's)
     {< interrupts_enabled = f >}
 
   method private value_to_word =
-     function
-     | Bil.Imm w -> Some w
-     | _ -> None
+    function
+    | Bil.Imm w -> Some w
+    | _ -> None
 
   method read_reg reg =
     let to_value bil_result =
@@ -247,7 +252,7 @@ class context image options = object(self : 's)
     | Bil.Mem storage -> storage#load addr
     | _ -> None
 
- (** Note that lookup can also be done in interpreter, and it returns 'a r *)
+  (** Note that lookup can also be done in interpreter, and it returns 'a r *)
   method dump_ram =
     match self#lookup (Z80_env.mem) with
     | Some result ->
@@ -320,7 +325,7 @@ class context image options = object(self : 's)
   method advance =
     add_pc self (List.length current_hunk.bytes)
 
-  (** Get PC, decode at current PC *)
+  (** Get PC, decode at current PC, and set as hunk *)
   method decode =
     let open Z80_disassembler in
     let pc = get_pc self in
@@ -331,13 +336,25 @@ class context image options = object(self : 's)
       printf "Current hunk %a\n" Hunk.pp hunk;
     {< current_hunk = hunk >}
 
-
+  (** Lift hunk *)
   method lift =
     let bil = Lifter.lift current_hunk.stmt in
     if options.di then
       self#print_lifted_stmts bil;
     {< current_bil = bil >}
 
+  (** Fetch a cached hunk/bil, otherwise decode and lift *)
+  method load_next =
+    let pc = get_pc self in
+    try match Array.get insn_cache pc with
+      | Some (hunk,bil) -> {< current_hunk = hunk; current_bil = bil >}
+      | None ->
+        self#decode |> fun s ->
+        s#lift |> fun s' ->
+        Array.set insn_cache pc (Some (s'#current_hunk, s'#current_bil));
+        s'
+    with
+    | _ -> failwith "Array out of bounds in insn cache"
 end
 
 let print_top () =
@@ -392,7 +409,7 @@ class ['a] z80_interpreter image options = object(self)
     put (ctxt#save_addr addr) >>= fun () ->
     return r
 
- method! load storage addr =
+  method! load storage addr =
     if options.di then
       printf "Entering load!\n%!";
     super#load storage addr >>= fun r ->
@@ -403,16 +420,16 @@ class ['a] z80_interpreter image options = object(self)
   method! eval stmts = super#eval stmts
 
   method private wwrite_word addr w =
-      let open Option in
-      let open Z80_cpu.CPU in
-      let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
-      ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
-      (* TODO use self#store directly *)
-      let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
-      let open Monad.State in
-      (* Does this do what I think it does? *)
-      self#eval stmt >>= fun () ->
-      get ()
+    let open Option in
+    let open Z80_cpu.CPU in
+    let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
+        ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
+    (* TODO use self#store directly *)
+    let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
+    let open Monad.State in
+    (* Does this do what I think it does? *)
+    self#eval stmt >>= fun () ->
+    get ()
 
   method private service_interrupt i =
     log_interrupt @@
@@ -430,10 +447,10 @@ class ['a] z80_interpreter image options = object(self)
                    ~addr:dst src LittleEndian `r16) in
           Bil.(Z80_env.mem := store_to) in
         let x = (w8 0x0) in
-            [Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc));
-             Bil.(Z80_env.sp := var Z80_env.sp - int (w16 2));
-             Bil.(jmp (int Word.(x@.addr)))
-            ] in
+        [Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc));
+         Bil.(Z80_env.sp := var Z80_env.sp - int (w16 2));
+         Bil.(jmp (int Word.(x@.addr)))
+        ] in
       (match i with
        | 0 -> self#eval (call_interrupt @@ w8 0x40) >>= fun () -> get ()
        | 1 -> self#eval (call_interrupt @@ w8 0x48) >>= fun () -> get ()
@@ -450,26 +467,26 @@ class ['a] z80_interpreter image options = object(self)
     | true ->
       log_interrupt "Interrupts ENABLED";
       (match ctxt#mem_at_addr (w16 0xFF0F) with
-      | Some req ->
-        if req > (w8 0) then
-          List.fold [0;1;2;3;4;5;6;7] ~init:(return ctxt)
-            ~f:(fun acc (bit as i) ->
-              match Util.test_bit req bit with
-              | false -> acc
-              | true ->
-                log_interrupt @@ sprintf "Interrupt %d requested" i;
-                acc >>= fun ctxt ->
-                (match ctxt#mem_at_addr (w16 0xFFFF) with
-                | Some enabled ->
-                   if Util.test_bit enabled bit then
-                     self#service_interrupt i
-                   else
-                     acc
-                 | None -> acc)
-            )
-        else
-          return ctxt
-      | None -> return ctxt)
+       | Some req ->
+         if req > (w8 0) then
+           List.fold [0;1;2;3;4;5;6;7] ~init:(return ctxt)
+             ~f:(fun acc (bit as i) ->
+                 match Util.test_bit req bit with
+                 | false -> acc
+                 | true ->
+                   log_interrupt @@ sprintf "Interrupt %d requested" i;
+                   acc >>= fun ctxt ->
+                   (match ctxt#mem_at_addr (w16 0xFFFF) with
+                    | Some enabled ->
+                      if Util.test_bit enabled bit then
+                        self#service_interrupt i
+                      else
+                        acc
+                    | None -> acc)
+               )
+         else
+           return ctxt
+       | None -> return ctxt)
     | false ->
       log_interrupt "Interrupts DISABLED";
       return ctxt
@@ -490,8 +507,9 @@ class ['a] z80_interpreter image options = object(self)
       needs to be! *)
   method step_insn =
     get () >>= fun ctxt ->
-    update (fun ctxt -> ctxt#decode) >>= fun () ->
-    update (fun ctxt -> ctxt#lift) >>= fun () ->
+    (*update (fun ctxt -> ctxt#decode) >>= fun () ->
+      update (fun ctxt -> ctxt#lift) >>= fun () ->*)
+    update (fun ctxt -> ctxt#load_next) >>= fun () ->
     get () >>= fun ctxt ->
     match ctxt#get_current_bil with
     | [] -> put ctxt#advance

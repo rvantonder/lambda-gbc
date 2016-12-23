@@ -8,6 +8,7 @@ class context : Z80_image.t -> Options.t -> object('s)
     inherit Bili.context
 
     method current_hunk : Z80_disassembler.Hunk.t
+    method current_bil : bil
     method print_cpu : unit
 
     method interrupts_enabled : bool
@@ -36,6 +37,8 @@ class context : Z80_image.t -> Options.t -> object('s)
     method lift : 's
     method print_lifted_stmts : stmt list -> unit
     method save_addr : word -> 's
+
+    method load_next : 's
   end
 
 (** The only way to advance the interpreter should be through step_insn and
