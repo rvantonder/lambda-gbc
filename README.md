@@ -22,6 +22,11 @@ Need to add a value permanently to memory if failed and found in image.
 
 Left off:
 
+Run 
+
+`LWT_LOG="clock -> debug" ./driver.native --bootrom --speed 0.0` for testing render version
+`LWT_LOG="clock -> debug" ./driver.native --bootrom --speed 0.0 --nr` for no render
+
  - ~.18 with rendering on, gpu on, no logging
 
  - ~.087 with rendering off, gpu on, no logging

@@ -401,6 +401,8 @@ class ['a] z80_interpreter image options = object(self)
       printf "Entered eval_store\n%!";
     super#eval_store mem addr word endian sz
 
+
+  (** TODO: custom memory array to write to, use in gpu *)
   method! store storage addr word =
     if options.di then
       printf "Entering store!\n%!";
