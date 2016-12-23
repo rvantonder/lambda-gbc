@@ -30,7 +30,7 @@ module Z80_interpreter_loop = struct
      | `Non_blocking -> log_ev_dbg_rq_rcv "handle rq NON-BLOCKING");
 
     log_ev_dbg_rq_rcv
-      @@ sprintf "Event %s" @@ Sexp.to_string (sexp_of_t rq);
+    @@ sprintf "Event %s" @@ Sexp.to_string (sexp_of_t rq);
     let ctxt' =
       match rq,state with
       | Step Frame,_ -> step_frame ctxt
@@ -140,7 +140,7 @@ module Z80_interpreter_loop = struct
       may_continue
     =
 
-    let screen : Screen.t = Screen.create term in
+    let screen : Screen.t = Screen.create may_continue term in
 
     let rec update ctxt cycles_done =
       (*log_ev_dbg_rq_rcv_in_non_blking "MODE ACTIVE: NON-BLOCKING";*)
@@ -166,15 +166,20 @@ module Z80_interpreter_loop = struct
           (match options.no_render with
            | false ->
              (*log_render "Cycles done. Doing hard render";*)
-             Screen.render screen ctxt'
+             (*Lwt_mvar.take may_continue >>= fun _ ->*) (* record time just
+                                                            before render*)
+             Lwt_mvar.take may_continue >>= fun _ ->
+             Screen.render screen ctxt' may_continue >>= fun res ->
+             Lwt_mvar.take may_continue >>= fun _ ->
+             Lwt.return res
            | true ->
              (*log_render "Cycles done. Rendering off.";*)
              Lwt.return ()) >>= fun () ->
 
           (*log_cycles @@
-          sprintf "Waiting to continue. Cycles: %d" cycles_done;*)
+            sprintf "Waiting to continue. Cycles: %d" cycles_done;*)
 
-          Lwt_mvar.take may_continue >>= fun _ ->
+          (*Lwt_mvar.take may_continue >>= fun _ ->*)
           update ctxt' (cycles_done - 70244)
         )
         (* XXX : waiting stops the whole debug loop. another reason
@@ -182,7 +187,7 @@ module Z80_interpreter_loop = struct
         (* not 0, but including the cycles if we went past *)
       else
         ((*log_cycles @@ sprintf "Cycles: %d" cycles_done;*)
-         update ctxt' cycles_done)
+          update ctxt' cycles_done)
     in
 
     update ctxt 0

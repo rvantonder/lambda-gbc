@@ -90,7 +90,7 @@ let disassemble_linear image options =
   match options.disas with
   | None -> ()
   | Some start ->
-    let disassembly = Z80_disassembler.linear image start 0x1d in
+    let disassembly = Z80_disassembler.linear image start 0x100 in
     if options.v then
       printf "Size: %d\n" @@ List.length disassembly;
     printf "%a" Z80_disassembler.pp disassembly
@@ -115,4 +115,4 @@ let () =
   disassemble_linear image options;
   if options.v then
     printf "Initializing interpreter...\n";
-  Runner.run options image |> ignore;
+  Runner.run options image |> ignore

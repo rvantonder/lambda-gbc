@@ -8,6 +8,6 @@ val get_tiles : Bil.storage option
 
 val print_ascii_screen : (int * int * int) list list -> unit
 
-val render : t -> Z80_interpreter_debugger.context -> unit Lwt.t
+val render : t -> Z80_interpreter_debugger.context -> 'a Lwt_mvar.t -> unit Lwt.t
 
-val create : LTerm.t -> t
+val create : 'a Lwt_mvar.t ->  LTerm.t -> t

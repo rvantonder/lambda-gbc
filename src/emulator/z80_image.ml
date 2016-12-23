@@ -12,8 +12,7 @@ let image_from_file ~filename =
   |> String.to_array
   |> Array.map ~f:(Fn.compose UInt8.of_int Char.to_int)
 
-let fold image ~init ~f =
-  Array.fold image ~init ~f
+let fold image ~init ~f = Array.fold image ~init ~f
 
 let get_bytes image ~position ~size =
   try
