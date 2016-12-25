@@ -35,7 +35,6 @@ let fetch_hunk image pc =
 
 (** update the 16-bit register for an 8-bit register *)
 let sync_r16 r =
-  (*log_clock @@ sprintf "syncing 16 %s" @@ Var.to_string r;*)
   let reg r _ r1 _ r2 : bool = Var.(r = r1 || r = r2) in
   let open Bil in
   if reg r "is" CPU.a "or" CPU.f then
@@ -46,13 +45,10 @@ let sync_r16 r =
     [CPU.de := (var CPU.d) ^ (var CPU.e)]
   else if reg r "is" CPU.h "or" CPU.l then
     [CPU.hl := (var CPU.h) ^ (var CPU.l)]
-  else
-    ((*log_clock "nothing to sync 16";*)
-      [])
+  else []
 
 (** We are given a 16 bit register. Update the 8-bit registers *)
 let sync_r8 r =
-  (*log_clock @@ sprintf "syncing 8 %s" @@ Var.to_string r;*)
   let reg r _ other_reg = Var.(r = other_reg) in
   let open Bil in
   let extract_hi = extract ~hi:15 ~lo:8 in
@@ -69,9 +65,7 @@ let sync_r8 r =
   else if reg r "is" CPU.hl then
     [CPU.h := extract_hi (var r);
      CPU.l := extract_lo (var r)]
-  else
-    ((*log_clock "nothing to sync 8";*)
-      [])
+  else []
 
 (** If a write occurs to 8 bit reg, sync 16 bit regs, and vice versa *)
 let sync reg =
@@ -482,8 +476,6 @@ class ['a] z80_interpreter image options = object(self)
       needs to be! *)
   method step_insn =
     get () >>= fun ctxt ->
-    (*update (fun ctxt -> ctxt#decode) >>= fun () ->
-      update (fun ctxt -> ctxt#lift) >>= fun () ->*)
     update (fun ctxt -> ctxt#load_next) >>= fun () ->
     get () >>= fun ctxt ->
     match ctxt#get_current_bil with
