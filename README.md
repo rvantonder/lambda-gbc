@@ -27,39 +27,28 @@ Run
 `LWT_LOG="clock -> debug" ./driver.native --bootrom --speed 0.0` for testing render version
 `LWT_LOG="clock -> debug" ./driver.native --bootrom --speed 0.0 --nr` for no render
 
- - ~.18 with rendering on, gpu on, no logging
-
- - ~.087 with rendering off, gpu on, no logging
- - ~.05 with rendering off, gpu off, no logging
+ - ~.148 with rendering on, gpu on, no logging
+ - ~.057 with rendering off, gpu on, no logging
+ - ~.025 with rendering off, gpu off, no logging
  
  Breakdown of slow down:
+ 
+ - INTERPRETER only (comment out gpu):    .0312
+ - means GPU :                       adds .057-.0312 = .025 abouts
  
  - RENDERING: adds .09+<br>
         ~3/4ths of slow down comes from draw_bg and lambda-term rendering. TODO: check if from_tile_list is a big culprit. I suspect the actual lambda term rendering is not so slow, because visually the blocks don't seem to delay too much (and we render each pixel in turn).
        ~1/4th comes from get_tiles
-       
- - GPU :      adds .037
- - INTERPRETER:    .05
  
- First fix up rendering. it's a disaster. Do lists right.
+ Possibilities: 
+ - optimize rendering
+ - even interpreter is still twice as slow as our target time (without sprites)
+ - optimize gpu. this happens every instruction, critical.
  
- Each instruction updates gpu. that's an expensive cost: extra memory reads/writes per instruction. Can we optimize:
- 
- a) how we do storage? bypass storage and use a mutable array outside of ctxt. how much is the speed gain?
- b) minimize read/writes in gpu.
- 
- For making interpreter faster, work in `only interpreter optimize speed`. Ideas: decode+lift up front (don't repeatedly
- lift re-encountered insns). 
- 
+ Ideas:
+ - even faster array memory
+ - gpu ??
 
-## TODO
-
-` LWT_LOG="render -> debug; clock -> debug" ./driver.native --bootrom --nr --speed 0.0`
-
-Need to know: if i remove clock, does it go fast enough? So we can diagnose the slow problem: is it because
-of the clock in the same thread? 
-
-Clean up `screen.ml` and `thread_cpu.ml`. Use matrix for rendering
 
 ## Design
 
