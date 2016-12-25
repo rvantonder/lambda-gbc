@@ -33,37 +33,53 @@ let fetch_hunk image pc =
   | _ -> failwith "Interpreter invariant broken: \
                    received more then one hunk in disassembly."
 
-let sync_r16 =
-  Bil.([CPU.af := (var CPU.a) ^ (var CPU.f);
-        CPU.bc := (var CPU.b) ^ (var CPU.c);
-        CPU.de := (var CPU.d) ^ (var CPU.e);
-        CPU.hl := (var CPU.h) ^ (var CPU.l)])
+(** update the 16-bit register for an 8-bit register *)
+let sync_r16 r =
+  (*log_clock @@ sprintf "syncing 16 %s" @@ Var.to_string r;*)
+  let reg r _ r1 _ r2 : bool = Var.(r = r1 || r = r2) in
+  let open Bil in
+  if reg r "is" CPU.a "or" CPU.f then
+    [CPU.af := (var CPU.a) ^ (var CPU.f)]
+  else if reg r "is" CPU.b "or" CPU.c then
+    [CPU.bc := (var CPU.b) ^ (var CPU.c)]
+  else if reg r "is" CPU.d "or" CPU.e then
+    [CPU.de := (var CPU.d) ^ (var CPU.e)]
+  else if reg r "is" CPU.h "or" CPU.l then
+    [CPU.hl := (var CPU.h) ^ (var CPU.l)]
+  else
+    ((*log_clock "nothing to sync 16";*)
+      [])
 
-let sync_r8 =
-  Bil.([CPU.a := Bil.extract ~hi:15 ~lo:8 (var CPU.af);
-        CPU.f := Bil.extract ~hi:7 ~lo:0  (var CPU.af);
-        CPU.b := Bil.extract ~hi:15 ~lo:8 (var CPU.bc);
-        CPU.c := Bil.extract ~hi:7 ~lo:0  (var CPU.bc);
-        CPU.d := Bil.extract ~hi:15 ~lo:8 (var CPU.de);
-        CPU.e := Bil.extract ~hi:7 ~lo:0  (var CPU.de);
-        CPU.h := Bil.extract ~hi:15 ~lo:8 (var CPU.hl);
-        CPU.l := Bil.extract ~hi:7 ~lo:0  (var CPU.hl)])
+(** We are given a 16 bit register. Update the 8-bit registers *)
+let sync_r8 r =
+  (*log_clock @@ sprintf "syncing 8 %s" @@ Var.to_string r;*)
+  let reg r _ other_reg = Var.(r = other_reg) in
+  let open Bil in
+  let extract_hi = extract ~hi:15 ~lo:8 in
+  let extract_lo = extract ~hi:7  ~lo:0 in
+  if reg r "is" CPU.af then
+    [CPU.a := extract_hi (var r);
+     CPU.f := extract_lo (var r)]
+  else if reg r "is" CPU.bc then
+    [CPU.b := extract_hi (var r);
+     CPU.c := extract_lo (var r)]
+  else if reg r "is" CPU.de then
+    [CPU.d := extract_hi (var r);
+     CPU.e := extract_lo (var r)]
+  else if reg r "is" CPU.hl then
+    [CPU.h := extract_hi (var r);
+     CPU.l := extract_lo (var r)]
+  else
+    ((*log_clock "nothing to sync 8";*)
+      [])
 
 (** If a write occurs to 8 bit reg, sync 16 bit regs, and vice versa *)
 let sync reg =
-  if verbose_sync then
-    printf "Syncing %a\n%!" Var.pp reg;
   match Var.typ reg with
-  | Type.Imm 8 ->
-    if verbose_sync then
-      (printf "Syncing 16:\n";
-       printf "%a\n" Bil.pp (sync_r16));
-    sync_r16
-  | Type.Imm 16 ->
-    if verbose_sync then
-      (printf "Syncing 8:\n";
-       printf "%a\n" Bil.pp (sync_r8));
-    sync_r8
+  (* if an 8-bit register was updated, update the corresponding 16 bit
+     register *)
+  | Type.Imm 8 -> sync_r16 reg
+  | Type.Imm 16 -> sync_r8 reg
   | Type.Mem _ -> [] (* skip mem *)
   | Type.Imm 1 -> [] (* skip flag *)
   | _ -> failwith "Invalid register type: not 8 or 16 bits"
