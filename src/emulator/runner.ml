@@ -24,7 +24,7 @@ let start_event_loop refresh_rate_frame options image =
   (*check_small_screen ui;*) (* TODO turn on later *)
 
   (* If debugging is enabled, pause NOW *)
-  send_stream (Some Debugger_types.Request.Pause);
+  (*send_stream (Some Debugger_types.Request.Pause);*)
 
   let may_continue = Lwt_mvar.create () in
   (* for testing. take the variable so later thread doesn't have opportunity to

@@ -148,10 +148,11 @@ module Z80_interpreter_loop = struct
       (* Non-blocking: handle input requests, or step *)
       (* Lwt.return @@ step_insn ctxt *) (* No debug *)
 
-      handle_debug_rq_or_step_once
+      (*handle_debug_rq_or_step_once
         cmd_recv_stream ctxt step_frame
         step_insn
-        screen
+        screen*)
+      Lwt.return (step_insn ctxt)
       >>= fun ctxt' ->
       let cycles_delta = ctxt'#cpu_clock - ctxt#cpu_clock in
       let cycles_done = cycles_done + cycles_delta in
