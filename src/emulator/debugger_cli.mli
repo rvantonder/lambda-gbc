@@ -2,7 +2,6 @@ open Debugger_types
 
 (** Does the work of processing commands and updating state *)
 module Command_interpreter : sig
-  (** We can make state opaque. So we do. *)
   type state
 
   val create : (Request.t option -> unit) -> state

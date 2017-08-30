@@ -189,61 +189,53 @@ let get_tiles storage =
   let ft = List.nth_exn range 0 in
   let ft = Addr.of_int ~width:16 ft in
   (* HACK: read MAP addr at ft *)
-  match storage#load ft with
-  | Some _ ->
-    (* If a word does not exist in memory, bail and return None *)
-    List.fold range ~init:(Some []) ~f:(fun acc addr_int ->
-        let addr = Addr.of_int ~width:16 addr_int in
-        acc >>= fun words ->
-        storage#load addr >>= fun word -> Some (word::words))
-    (* 1024 bytes *)
-    >>= fun idxs ->
-    (* tiles : 32 x 32
-       tile 0    : 16 bytes
-       tile 1    : 16 bytes
-       ...
-       tile 1024 : 16 bytes *)
-    let base = Addr.of_int ~width:16 data_display_segment.pos in
-    (* HACK 2: read DATA SET base *)
-    begin match storage#load base with
-      | Some _ ->
-        let tiles = tiles_of_idxs storage base idxs in
-        (* tiles' :
-           [
-              tile 1:      [
-                           row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
-                           ...
-                           row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
-                           ]
-              tile 2:      [
-                           row 0 : ...
-                           ...
-                           row 8 : ...
-                           ]
+  (* None means no VRAM MAP hack *)
+  storage#load ft >>= fun _ ->
+  (* If a word does not exist in memory, bail and return None *)
+  List.fold range ~init:(Some []) ~f:(fun acc addr_int ->
+      let addr = Addr.of_int ~width:16 addr_int in
+      acc >>= fun words ->
+      storage#load addr >>= fun word -> Some (word::words))
+  (* 1024 bytes *)
+  >>= fun idxs ->
+  (* tiles : 32 x 32
+     tile 0    : 16 bytes
+     tile 1    : 16 bytes
+     ...
+     tile 1024 : 16 bytes *)
+  let base = Addr.of_int ~width:16 data_display_segment.pos in
+  (* HACK 2: read DATA SET base *)
+  (* None means no VRAM SET hack *)
+  storage#load base >>= fun _ ->
+  match tiles_of_idxs storage base idxs with
+  (* VRAM does not contain values for 1024 tiles *)
+  | Error _ -> None
+  | Ok tiles ->
+    (* tiles' :
+       [
+          tile 1:      [
+                       row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
+                       ...
+                       row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
+                       ]
+          tile 2:      [
+                       row 0 : ...
+                       ...
+                       row 8 : ...
+                       ]
 
-              tile ...
+          tile ...
 
-              tile 1024:   [
-                           row 0 : ...
-                           ...
-                           row 8 : ...
-                           ]
-           ]
-        *)
-        begin match tiles with
-          | Ok tiles ->
-            let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
-            let tiles' = tiles_to_pixel_grid tiles' in
-            return tiles'
-          (* VRAM does not contain values for 1024 tiles *)
-          | Error _ -> None
-        end
-      (* Fuck this, no VRAM SET hack *)
-      | None -> None
-    end
-  (* Fuck this, no VRAM MAP hack *)
-  | None -> None
-
+          tile 1024:   [
+                       row 0 : ...
+                       ...
+                       row 8 : ...
+                       ]
+       ]
+    *)
+    let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
+    let tiles' = tiles_to_pixel_grid tiles' in
+    return tiles'
 
 (** [send] is the member that triggers rendering: ui is enqueued with
     an item to draw. When then call LTerm_ui.draw to trigger the
@@ -252,31 +244,29 @@ let get_tiles storage =
     gave to the LTerm call back that draws the ui. It will
     populate finished_drawing once it's finished. We block
     until it is ready by calling Lwt_mvar.take after LTer_uil.draw *)
-
-type t = {ui : LTerm_ui.t Lwt.t;
-          send :
-            (Z80_interpreter_debugger.context * unit Lwt_mvar.t) option
-            -> unit;
-          finished_drawing : unit Lwt_mvar.t
+type t = { ui : LTerm_ui.t Lwt.t
+         ; send :
+             (Z80_interpreter_debugger.context * unit Lwt_mvar.t) option
+             -> unit
+         ; finished_drawing : unit Lwt_mvar.t
          }
 
 let draw_bg ctxt lterm_ctxt tiles =
-  (*log_render "Drawing bg";*)
+  let open Option in
   let scroll_offset addr =
     let addr = Addr.of_int ~width:16 addr in
     let value = ctxt#mem_at_addr addr in
     match value with
-    | Some v ->
-      Some (Word.to_int v |> Or_error.ok_exn)
-    | _ ->
-      None in
+    | Some v -> Some (Word.to_int v |> Or_error.ok_exn)
+    | _ -> None in
   let scroll_offset_y = scroll_offset 0xFF42 in
   let scroll_offset_x = scroll_offset 0xFF43 in
   Background.from_tile_list
     ?offset_y:scroll_offset_y
     ?offset_x:scroll_offset_x
-    tiles lterm_ctxt |>
-  Background.render
+    tiles
+    lterm_ctxt
+  |> Background.render
 
 (** TODO: make this work with utils, but DO NOT put in
     utils because circular build dep *)
@@ -295,14 +285,6 @@ let tiles_from_mem ctxt clock_stream =
   let storage = storage_of_context ctxt in
   (*Lwt_mvar.take clock_stream >>= fun _ ->*)
   Lwt.return @@ get_tiles storage
-
-(*let tiles = Screen.get_tiles options storage in
-  (match tiles with
-  | Some tiles ->
-   (*Screen.print_ascii_screen tiles;*)
-   ref_tiles := tiles;
-  | None -> ())*)
-
 
 (** TODO: why if i raise exception here does it get ignored? *)
 (** Warning: double check this. on_success returns immediately *)
@@ -323,25 +305,23 @@ let draw draw_recv_stream ui matrix clock_stream : unit =
          LTerm_draw.clear lterm_ctxt;
          draw_bg ctxt lterm_ctxt tiles;
        | None -> ());
-      Lwt.on_success (Lwt_mvar.put finished_drawing ()) (fun _ ->
-          ()(*log_render "Finished drawing";*))
+      Lwt.on_success (Lwt_mvar.put finished_drawing ()) ident
 
 let create clock_stream term : t =
   let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
   let finished_drawing = Lwt_mvar.create () in
   (* remove the default variable from finished_drawing *)
-
-  Lwt.on_success (Lwt_mvar.take finished_drawing) (fun _ ->
-      ());
+  Lwt.on_success (Lwt_mvar.take finished_drawing) ident;
   let ui = LTerm_ui.create term (fun ui matrix ->
       draw draw_recv_stream ui matrix clock_stream) in
-  {ui; send = draw_send_stream; finished_drawing}
+  { ui; send = draw_send_stream; finished_drawing }
 
 
 (** send is draw_send_stream *)
-let render {ui;send;finished_drawing} (ctxt : Z80_interpreter_debugger.context)
+let render
+    {ui ; send ; finished_drawing }
+    (ctxt : Z80_interpreter_debugger.context)
     clock_stream =
-  (*log_render "Sending ctxt";*)
   send (Some (ctxt, finished_drawing));
   (* call it *)
   (*log_render "LTerm_ui.draw";*)
