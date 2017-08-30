@@ -1,15 +1,15 @@
 open Format
 open Fieldslib
 
-type t = {    v : bool;
-              di : bool;
-              no_render : bool;
-              filename : string;
-              hex_dump : bool;
-              disas : int option;
-              k : int option;
-              bootrom : bool;
-              frame_speed : float
+type t = { v : bool
+         ; di : bool
+         ; no_render : bool
+         ; filename : string
+         ; hex_dump : bool
+         ; disas : int option
+         ; k : int option
+         ; bootrom : bool
+         ; frame_speed : float
          }
 [@@deriving fields]
 
@@ -24,13 +24,11 @@ let print opt =
     ~filename:(fun f -> printf "%s : %s" (Field.name f) (Field.get f opt))
     ~disas:(fun dd ->
         match Field.get dd opt with
-        | Some i ->
-          printf "%s : 0x%x" (Field.name dd) i
+        | Some i -> printf "%s : 0x%x" (Field.name dd) i
         | None -> printf "%s : false" (Field.name dd))
     ~k:(fun k ->
         match Field.get k opt with
-        | Some i ->
-          printf "%s : %d" (Field.name k) i
+        | Some i -> printf "%s : %d" (Field.name k) i
         | None -> printf "%s : false" (Field.name k))
     ~frame_speed:(fun speed ->
         printf "%s : %f" (Field.name speed) (Field.get speed opt))

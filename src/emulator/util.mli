@@ -28,9 +28,6 @@ module Util_bil : sig
   val store_ : addr:addr -> word -> stmt
 end
 
-(*val storage_of_context :
-  Z80_interpreter_debugger.context -> Bil.storage option*)
-
 val time : string -> 'a lazy_t -> Options.t -> 'a
 
 val dump_storage : Bil.storage -> int -> int -> unit

@@ -7,7 +7,6 @@ class context :
   Options.t ->
   object('s)
     inherit Z80_interpreter.context
-
     method add_breakpoint : breakpoint -> 's
     method breakpoints : breakpoint list
     method remove_breakpoint : breakpoint -> 's

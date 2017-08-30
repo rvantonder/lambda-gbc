@@ -35,16 +35,16 @@ end = struct
   let false_ = i Word.b0
   let true_  = i Word.b1
   let store_ ~addr v =
-    (* TODO: fail if addr or v lie outside ranges *)
-    Bil.(Env.mem := Bil.store ~mem:(Bil.var Env.mem)
-             ~addr:(i addr) (i v) LittleEndian `r8)
+    let open Bil in
+    Env.mem :=
+      Bil.store
+        ~mem:(Bil.var Env.mem)
+        ~addr:(i addr) (i v) LittleEndian `r8
 end
 
 
 let test_bit v bit_pos =
   let mask = Bap_word.(w8 1 lsl w8 bit_pos) in
-  (*log_gpu @@ sprintf "test_bit @ %d : mask: %a v: %a"
-    bit_pos Word.pps mask Word.pps v;*)  (*TODO fix logging*)
   Bap_word.(mask land v) = Bap_word.(w8 1 lsl w8 bit_pos)
 
 let set_bit v bit_pos =
@@ -57,11 +57,13 @@ let reset_bit v bit_pos =
 
 let time tag f options =
   let t = Unix.gettimeofday () in
-  let res = Lazy.force f in
+  let lazy result = f in
   if options.v then
-    Format.printf "[%s] Execution time: %f seconds\n%!" tag
+    Format.printf
+      "[%s] Execution time: %f seconds\n%!"
+      tag
       (Unix.gettimeofday () -. t);
-  res
+  result
 
 let dump_storage storage s e =
   List.iter (List.range s e) ~f:(fun addr_int ->
@@ -70,9 +72,8 @@ let dump_storage storage s e =
       match storage#load addr with
       | Some word ->
         printf "%02x " @@ (Bap_word.to_int word |> ok_exn)
-      (*printf "\t\t%a -> %a\n" Addr.pp addr Word.pp word*)
       | None -> printf "00 ");
-  printf "\n"
+  printf "@."
 
 let dump_segment storage (seg : Gbc_segment.t) =
   dump_storage storage seg.pos (seg.pos+seg.size)

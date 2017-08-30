@@ -3,8 +3,8 @@ open Bap.Std
 open Format
 type t
 
-(** create the entire memory image represented by a gameboy color
-    instance (65k *)
+(** create the entire memory image represented by a gameboy color instance
+    (65k *)
 val create : unit -> mem
 
 val image_from_file : filename:string -> t

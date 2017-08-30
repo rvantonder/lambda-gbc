@@ -297,11 +297,6 @@ let draw draw_recv_stream ui matrix clock_stream : unit =
        | Some tiles ->
          let size = LTerm_ui.size ui in
          let lterm_ctxt = LTerm_draw.context matrix size in
-         (*Format.printf "Size: %s\n" @@ LTerm_geom.string_of_size size;
-           Format.printf "%b %b" (size.rows < 289) (size.cols < 1430);
-           (if size.rows < 289 || size.cols < 1430 then
-            raise (Failure "I'm not going to continue drawing. Screen too small"));*)
-         (*log_render "Clearing lterm";*)
          LTerm_draw.clear lterm_ctxt;
          draw_bg ctxt lterm_ctxt tiles;
        | None -> ());
@@ -323,9 +318,6 @@ let render
     (ctxt : Z80_interpreter_debugger.context)
     clock_stream =
   send (Some (ctxt, finished_drawing));
-  (* call it *)
-  (*log_render "LTerm_ui.draw";*)
-  (* now immediately it calls draw and returns, not waiting*)
   ui >>= fun ui -> LTerm_ui.draw ui;
   (* First wait for finished drawing. Don't wrap this in on_success.
      on_success returns immediately *)

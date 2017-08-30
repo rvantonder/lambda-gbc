@@ -7,7 +7,6 @@ open Monad.State
 
 open Logging
 
-
 class context image options = object (self)
   inherit Z80_interpreter.context image options as super
 
@@ -24,8 +23,7 @@ class context image options = object (self)
     {< breakpoints = breakpoints' >}
 
   method print_breakpoints =
-    List.iter self#breakpoints ~f:(fun bp ->
-        printf "0x%x\n%!" bp)
+    List.iter self#breakpoints ~f:(printf "0x%x\n%!")
 end
 
 type send_event_stream = (Request.t option -> unit)
@@ -36,7 +34,6 @@ class ['a] z80_interpreter_debugger image options send_stream =
     inherit ['a] Z80_interpreter.z80_interpreter image options as super
 
     method! eval stmts =
-      (*log_ev_cpu_dbg_eval @@ Bil.to_string stmts;*)
       super#eval stmts
 
     (** Must call super#step_insn first. Consider that you may have stopped on a
@@ -52,5 +49,4 @@ class ['a] z80_interpreter_debugger image options send_stream =
     method! eval_special s =
       send_stream (Some Request.Pause);
       return ()
-
   end

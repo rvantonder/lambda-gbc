@@ -30,21 +30,18 @@ let fetch_hunk image pc =
   match hunks with
   | [] -> failwith "Nothing to disassemble!"
   | [hunk] -> hunk
-  | _ -> failwith "Interpreter invariant broken: \
-                   received more then one hunk in disassembly."
+  | _ ->
+    failwith "Interpreter invariant broken: \
+              received more then one hunk in disassembly."
 
 (** update the 16-bit register for an 8-bit register *)
 let sync_r16 r =
-  let reg r _ r1 _ r2 : bool = Var.(r = r1 || r = r2) in
   let open Bil in
-  if reg r "is" CPU.a "or" CPU.f then
-    [CPU.af := (var CPU.a) ^ (var CPU.f)]
-  else if reg r "is" CPU.b "or" CPU.c then
-    [CPU.bc := (var CPU.b) ^ (var CPU.c)]
-  else if reg r "is" CPU.d "or" CPU.e then
-    [CPU.de := (var CPU.d) ^ (var CPU.e)]
-  else if reg r "is" CPU.h "or" CPU.l then
-    [CPU.hl := (var CPU.h) ^ (var CPU.l)]
+  let reg r _ r1 _ r2 : bool = Var.(r = r1 || r = r2) in
+  if reg r "is" CPU.a "or" CPU.f then [CPU.af := (var CPU.a) ^ (var CPU.f)]
+  else if reg r "is" CPU.b "or" CPU.c then [CPU.bc := (var CPU.b) ^ (var CPU.c)]
+  else if reg r "is" CPU.d "or" CPU.e then [CPU.de := (var CPU.d) ^ (var CPU.e)]
+  else if reg r "is" CPU.h "or" CPU.l then [CPU.hl := (var CPU.h) ^ (var CPU.l)]
   else []
 
 (** We are given a 16 bit register. Update the 8-bit registers *)
@@ -54,24 +51,22 @@ let sync_r8 r =
   let extract_hi = extract ~hi:15 ~lo:8 in
   let extract_lo = extract ~hi:7  ~lo:0 in
   if reg r "is" CPU.af then
-    [CPU.a := extract_hi (var r);
-     CPU.f := extract_lo (var r)]
+    [ CPU.a := extract_hi (var r)
+    ; CPU.f := extract_lo (var r) ]
   else if reg r "is" CPU.bc then
-    [CPU.b := extract_hi (var r);
-     CPU.c := extract_lo (var r)]
+    [ CPU.b := extract_hi (var r)
+    ; CPU.c := extract_lo (var r) ]
   else if reg r "is" CPU.de then
-    [CPU.d := extract_hi (var r);
-     CPU.e := extract_lo (var r)]
+    [ CPU.d := extract_hi (var r)
+    ; CPU.e := extract_lo (var r) ]
   else if reg r "is" CPU.hl then
-    [CPU.h := extract_hi (var r);
-     CPU.l := extract_lo (var r)]
+    [ CPU.h := extract_hi (var r)
+    ; CPU.l := extract_lo (var r)]
   else []
 
 (** If a write occurs to 8 bit reg, sync 16 bit regs, and vice versa *)
 let sync reg =
   match Var.typ reg with
-  (* if an 8-bit register was updated, update the corresponding 16 bit
-     register *)
   | Type.Imm 8 -> sync_r16 reg
   | Type.Imm 16 -> sync_r8 reg
   | Type.Mem _ -> [] (* skip mem *)
@@ -107,8 +102,7 @@ let sub_pc ctxt stmts =
         match ctxt#pc with
         | Bil.Imm pc -> Bil.int pc
         | _ -> failwith "Cannot substitute pc, not a value"
-      else
-        Bil.var v
+      else Bil.var v
   end)#run stmts
 
 class context image options = object(self : 's)
@@ -144,7 +138,7 @@ class context image options = object(self : 's)
 
   method save_addr addr = {< addrs = Set.add addrs addr >}
 
-  method inc_k = {< k = k + 1>}
+  method inc_k = {< k = k + 1 >}
 
   val interrupts_enabled = false
 
@@ -153,17 +147,17 @@ class context image options = object(self : 's)
   method set_interrupts_enabled (f : bool) =
     {< interrupts_enabled = f >}
 
-  method private value_to_word =
-    function
+  method private value_to_word = function
     | Bil.Imm w -> Some w
     | _ -> None
 
   method read_reg reg =
     let to_value bil_result =
-      Bil.Result.value bil_result |>
-      self#value_to_word in
-    Seq.find_exn self#bindings ~f:(fun (v,bil_result) ->
-        Var.(v = reg)) |> snd |> to_value
+      Bil.Result.value bil_result
+      |> self#value_to_word in
+    Seq.find_exn self#bindings ~f:(fun (v, _) -> Var.(v = reg))
+    |> snd
+    |> to_value
 
   (** Special cases for incrementing cpu clock:
       (1) Conditional jump
@@ -176,11 +170,11 @@ class context image options = object(self : 's)
       of the three the jump comes from without looking
       at the hunk anyway *)
   method inc_cpu_clock =
-    let is_true flag b = match self#read_reg flag with
+    let is_true flag b =
+      match self#read_reg flag with
       | Some w -> if w = b then true else false
       | _ -> false in
-    let flag_is_true =
-      function
+    let flag_is_true = function
       | `FNC -> is_true CPU.fc Word.b0
       | `FC ->  is_true CPU.fc Word.b1
       | `FNZ -> is_true CPU.fz Word.b0
@@ -191,7 +185,7 @@ class context image options = object(self : 's)
       | true -> true_
       | false -> false_ in
     match current_hunk.stmt with
-    | (`JR,[#Z80_disasm.Cond.t as flag; _]) ->
+    | (`JR, [#Z80_disasm.Cond.t as flag; _]) ->
       (* For `JR, default is 8 if false. Else, 12 if true. TODO:
          embed hardcoded 12 in hunk data structure *)
       let _false = current_hunk.cycles in
@@ -204,7 +198,7 @@ class context image options = object(self : 's)
       let _true = 16 in
       let clocks = add_clocks _true _false flag in
       {< cpu_clock = cpu_clock + clocks >}
-    | (`CALL,[#Z80_disasm.Cond.t as flag; _]) ->
+    | (`CALL, [#Z80_disasm.Cond.t as flag; _]) ->
       (* For `CALL, default is 12 if false. Else, 24 if true *)
       let _false = current_hunk.cycles in
       let _true = 24 in
@@ -234,16 +228,15 @@ class context image options = object(self : 's)
     | _ -> ()
 
   method dump_vram =
-    printf "In DUM VRAM\n%!";
     match self#lookup (Z80_env.mem) with
     | Some result ->
       (match Bil.Result.value result with
        | Bil.Mem storage -> Set.iter self#addrs ~f:(fun addr ->
            let addr_int = Word.to_int addr |> ok_exn in
            match storage#load addr with
-           | Some word when addr_int >= 0x8000 && addr_int < 0xa000 &&
-                            (Word.to_int word |> ok_exn) <> 0 ->
-             (*if options.di then*)
+           | Some word
+             when addr_int >= 0x8000 && addr_int < 0xa000 &&
+                  (Word.to_int word |> ok_exn) <> 0 ->
              printf "\t\t%a -> %a\n" Addr.pp addr Word.pp word
            | _ -> ())
        | _ -> ())
@@ -296,11 +289,9 @@ class context image options = object(self : 's)
   method decode =
     let open Z80_disassembler in
     let pc = get_pc self in
-    if debug then
-      printf "Current decode PC: 0x%04x\n" pc;
+    if debug then printf "Current decode PC: 0x%04x\n" pc;
     let hunk = fetch_hunk image pc in
-    if debug then
-      printf "Current hunk %a\n" Hunk.pp hunk;
+    if debug then printf "Current hunk %a\n" Hunk.pp hunk;
     {< current_hunk = hunk >}
 
   (** Lift hunk *)
@@ -353,7 +344,6 @@ class ['a] z80_interpreter image options = object(self)
           aqua (Bap.Std.Stmt.to_string stmt |> normalize) restore)
 
   (** Memory related operations (expi) *)
-  (*method! empty = new Z80_memory.memory_map image options*)
   method! empty = new Z80_memory.memory_array image options
 
   (** When it seems Exp.Load in bil, it first performs
@@ -365,22 +355,19 @@ class ['a] z80_interpreter image options = object(self)
     super#eval_load mem addr endian sz
 
   method! eval_store ~mem ~addr word endian sz =
-    if options.di then
-      printf "Entered eval_store\n%!";
+    if options.di then printf "Entered eval_store\n%!";
     super#eval_store mem addr word endian sz
 
   (** TODO: custom memory array to write to, use in gpu *)
   method! store storage addr word =
-    if options.di then
-      printf "Entering store!\n%!";
+    if options.di then printf "Entering store!\n%!";
     super#store storage addr word >>= fun r ->
     get () >>= fun ctxt ->
     put (ctxt#save_addr addr) >>= fun () ->
     return r
 
   method! load storage addr =
-    if options.di then
-      printf "Entering load!\n%!";
+    if options.di then printf "Entering load!\n%!";
     super#load storage addr >>= fun r ->
     return r
 
@@ -390,75 +377,73 @@ class ['a] z80_interpreter image options = object(self)
 
   method private wwrite_word addr w =
     let open Option in
+    let open Monad.State in
     let open Z80_cpu.CPU in
-    let store_ addr v = Bil.store ~mem:(Bil.var Z80_cpu.CPU.mem)
-        ~addr:(Bil.int addr) (Bil.int v) LittleEndian `r8 in
+    let store_ addr v =
+      Bil.store
+        ~mem:(Bil.var Z80_cpu.CPU.mem)
+        ~addr:(Bil.int addr) (Bil.int v)
+        LittleEndian
+        `r8
+    in
     (* TODO use self#store directly *)
     let stmt = [Bil.(Z80_cpu.CPU.mem := store_ addr w)] in
-    let open Monad.State in
-    (* Does this do what I think it does? *)
     self#eval stmt >>= fun () ->
     get ()
 
   method private service_interrupt i =
-    log_interrupt @@
-    sprintf "Interrupt enabled. CPU servicing interrupt %d" i;
+    let open Bil in
+    log_interrupt @@ sprintf "Interrupt enabled. CPU servicing interrupt %d" i;
     get () >>= fun ctxt ->
     update (fun ctxt -> ctxt#set_interrupts_enabled false) >>= fun () ->
     match ctxt#mem_at_addr (w16 0xFF0F) with
-    | Some req ->
-      let req = Util.reset_bit req i in
-      self#wwrite_word (w16 0xFF0F) req >>= fun ctxt ->
+    | Some request ->
+      let request = Util.reset_bit request i in
+      self#wwrite_word (w16 0xFF0F) request >>= fun ctxt ->
       let call_interrupt addr =
         let store_to16 ~(dst : exp) ~(src : exp) : stmt =
-          let store_to =
-            Bil.(store ~mem:(var Z80_env.mem)
-                   ~addr:dst src LittleEndian `r16) in
-          Bil.(Z80_env.mem := store_to) in
-        let x = (w8 0x0) in
-        [Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc));
-         Bil.(Z80_env.sp := var Z80_env.sp - int (w16 2));
-         Bil.(jmp (int Word.(x@.addr)))
-        ] in
-      (match i with
-       | 0 -> self#eval (call_interrupt @@ w8 0x40) >>= fun () -> get ()
-       | 1 -> self#eval (call_interrupt @@ w8 0x48) >>= fun () -> get ()
-       | 2 -> self#eval (call_interrupt @@ w8 0x50) >>= fun () -> get ()
-       | 3 -> self#eval (call_interrupt @@ w8 0x60) >>= fun () -> get ()
-       | _ -> failwith "No such interrupt to service"
-      )
-    | None -> failwith "No req in service_interrupt"
+          Z80_env.mem :=
+            Bil.store
+              ~mem:(var Z80_env.mem)
+              ~addr:dst src LittleEndian `r16
+        in
+        let w0 = (Word.zero 0x8) in
+        [ Bil.(store_to16 ~dst:(var Z80_env.sp) ~src:(var Z80_env.pc))
+        ; Bil.(Z80_env.sp := var Z80_env.sp - int (w16 2))
+        ; Bil.(jmp (int Word.(w0@.addr))) ] in
+      begin match i with
+        | 0 -> self#eval (call_interrupt @@ w8 0x40) >>= fun () -> get ()
+        | 1 -> self#eval (call_interrupt @@ w8 0x48) >>= fun () -> get ()
+        | 2 -> self#eval (call_interrupt @@ w8 0x50) >>= fun () -> get ()
+        | 3 -> self#eval (call_interrupt @@ w8 0x60) >>= fun () -> get ()
+        | _ -> failwith "No such interrupt to service"
+      end
+    | None -> failwith "No request in service_interrupt"
 
   method private check_interrupts =
     log_interrupt "Checking interrupts";
     get () >>= fun ctxt ->
     match ctxt#interrupts_enabled with
-    | true ->
-      log_interrupt "Interrupts ENABLED";
-      (match ctxt#mem_at_addr (w16 0xFF0F) with
-       | Some req ->
-         if req > (w8 0) then
-           List.fold [0;1;2;3;4;5;6;7] ~init:(return ctxt)
-             ~f:(fun acc (bit as i) ->
-                 match Util.test_bit req bit with
-                 | false -> acc
-                 | true ->
-                   log_interrupt @@ sprintf "Interrupt %d requested" i;
-                   acc >>= fun ctxt ->
-                   (match ctxt#mem_at_addr (w16 0xFFFF) with
-                    | Some enabled ->
-                      if Util.test_bit enabled bit then
-                        self#service_interrupt i
-                      else
-                        acc
-                    | None -> acc)
-               )
-         else
-           return ctxt
-       | None -> return ctxt)
     | false ->
       log_interrupt "Interrupts DISABLED";
       return ctxt
+    | true ->
+      log_interrupt "Interrupts ENABLED";
+      match ctxt#mem_at_addr (w16 0xFF0F) with
+      | Some request when request > (w8 0) ->
+        List.fold [0;1;2;3;4;5;6;7]
+          ~init:(return ctxt)
+          ~f:(fun acc (bit as i) ->
+              match Util.test_bit request bit with
+              | false -> acc
+              | true ->
+                log_interrupt @@ sprintf "Interrupt %d requested" i;
+                acc >>= fun ctxt ->
+                match ctxt#mem_at_addr (w16 0xFFFF) with
+                | Some enabled when Util.test_bit enabled bit ->
+                  self#service_interrupt i
+                | _ -> acc)
+      | _ -> return ctxt
 
   (** Advance should be called after each set of lifted statements
       corresponding to one hunk has been interpreted. Not when every move is
@@ -494,13 +479,13 @@ class ['a] z80_interpreter image options = object(self)
 
   method step_frame =
     let rec repeat count =
-      if count < self#frame_steps then
+      match count < self#frame_steps with
+      | true ->
         self#step_insn >>= fun () ->
         get () >>= fun ctxt ->
         let cycles = ctxt#current_hunk.cycles in
         repeat (count+cycles)
-      else
-        return () in
+      | false -> return () in
     repeat 0
 
   (** 8. *)
@@ -510,11 +495,11 @@ class ['a] z80_interpreter image options = object(self)
     get () >>= fun ctxt ->
     let open Z80_disassembler in
     print_top ();
-    printf "\n%!";
+    printf "@.";
     ctxt#print_cpu;
     print_bot ();
-    printf "\n%!";
-    printf "%a\n%!" Hunk.pp ctxt#current_hunk;
+    printf "@.";
+    printf "%a@." Hunk.pp ctxt#current_hunk;
     failwith "Not implemented" |> ignore;
     get () >>= fun ctxt ->
     put ctxt#advance >>= fun () ->
@@ -524,11 +509,8 @@ end
 
 (** [ctxt] is synonymous with state. this prints the register state *)
 let print_ctxt ctxt options =
-  ctxt#bindings |> Seq.iter ~f:(fun (v,bil_result) ->
-      let result = Bil.Result.value bil_result in
-      match result with
-      | Bil.Imm w ->
-        if options.di then
-          printf "Var: %a = %a\n" Var.pp v Word.pp w
+  Seq.iter ctxt#bindings ~f:(fun (v, bil_result) ->
+      match Bil.Result.value bil_result with
+      | Bil.Imm w -> if options.di then printf "Var: %a = %a\n" Var.pp v Word.pp w
       | Bil.Mem s -> () (* Our example doesn't use memory *)
       | Bil.Bot -> () (* Our example has no undefined results *))
