@@ -2,7 +2,7 @@ open Core_kernel.Std
 open Unsigned
 open Bap.Std
 open Format
-open Z80_disassembler.Hunk
+open Hunk
 open Options
 open Lwt
 open Util.Util_word
@@ -114,11 +114,11 @@ let sub_pc ctxt stmts =
 class context image options = object(self : 's)
   inherit Bili.context as super
 
-  val current_hunk = Z80_disassembler.Hunk.empty ()
+  val current_hunk = Hunk.empty ()
 
   val current_bil = []
 
-  val insn_cache : (Z80_disassembler.Hunk.t * bil) option array =
+  val insn_cache : (Hunk.t * bil) option array =
     Array.create ~len:0x1000 None
 
   (** Number of instructions executed *)

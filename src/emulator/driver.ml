@@ -1,4 +1,3 @@
-(** A driver entry point to test things incrementally *)
 open Core_kernel
 open Lazy
 open Format
@@ -12,20 +11,27 @@ module Cmdline = struct
   open Options
   open Cmdliner
 
-  let process_args v_opt di_opt filename_opt no_render_opt hex_dump_opt
-      disas_opt k_opt bootrom_opt frame_speed_opt =
+  let process_args
+      v_opt
+      di_opt
+      filename_opt
+      no_render_opt
+      hex_dump_opt
+      disas_opt
+      k_opt bootrom_opt
+      frame_speed_opt =
     let (!) opt default = Option.value opt ~default in
-    let filename_opt =
-      !filename_opt "tests/boot/DMG_ROM_WITH_SCREEN.bin" in
-    {v = v_opt;
-     di = di_opt;
-     filename = filename_opt;
-     no_render = no_render_opt;
-     hex_dump = hex_dump_opt;
-     disas = disas_opt;
-     k = k_opt;
-     bootrom = bootrom_opt;
-     frame_speed = frame_speed_opt}
+    let filename_opt = !filename_opt "tests/boot/DMG_ROM_WITH_SCREEN.bin" in
+    { v = v_opt
+    ; di = di_opt
+    ; filename = filename_opt
+    ; no_render = no_render_opt
+    ; hex_dump = hex_dump_opt
+    ; disas = disas_opt
+    ; k = k_opt
+    ; bootrom = bootrom_opt
+    ; frame_speed = frame_speed_opt
+    }
 
   let v_opt : bool Term.t =
     let doc = "verbose info" in
@@ -69,17 +75,20 @@ module Cmdline = struct
     Term.info ~doc:"A pure functional GBC emulator" "Lambda-GBC"
 
   let parse argv =
-    Term.eval ~argv (Term.(pure process_args
-                           $v_opt
-                           $di_opt
-                           $filename_opt
-                           $no_render_opt
-                           $hex_dump_opt
-                           $disas_opt
-                           $k_opt
-                           $bootrom_opt
-                           $frame_speed_opt), info)
-    |> function
+    Term.eval
+      ~argv
+      begin Term.(
+          pure process_args
+          $v_opt
+          $di_opt
+          $filename_opt
+          $no_render_opt
+          $hex_dump_opt
+          $disas_opt
+          $k_opt
+          $bootrom_opt
+          $frame_speed_opt), info
+      end |> function
     | `Ok opts -> opts
     | _ -> exit 1
 end
@@ -91,17 +100,19 @@ let disassemble_linear image options =
   | None -> ()
   | Some start ->
     let disassembly = Z80_disassembler.linear image start 0x100 in
-    if options.v then
-      printf "Size: %d\n" @@ List.length disassembly;
+    if options.v then printf "Size: %d@." @@ List.length disassembly;
     printf "%a" Z80_disassembler.pp disassembly
 
 let read_image options =
   let open Z80_image in
   let filename = options.filename in
-  if options.v then
-    Format.printf "Reading image...\n%!";
-  let image = Util.time "[image_from_file]"
-      (lazy (image_from_file ~filename)) options in
+  if options.v then Format.printf "Reading image...\n%!";
+  let image =
+    Util.time
+      "[image_from_file]"
+      (lazy (image_from_file ~filename))
+      options
+  in
   if options.hex_dump then
     Format.printf "%s\n" @@
     Util.time "[to_string]" (lazy (to_string image)) options;
@@ -110,9 +121,7 @@ let read_image options =
 let () =
   let options = Cmdline.parse Sys.argv in
   let image = read_image options in
-  if options.v then
-    printf "Image size: %d\n%!" (Z80_image.size image);
+  if options.v then printf "Image size: %d\n%!" (Z80_image.size image);
   disassemble_linear image options;
-  if options.v then
-    printf "Initializing interpreter...\n";
+  if options.v then printf "Initializing interpreter...\n";
   Runner.run options image |> ignore

@@ -2,12 +2,12 @@ open Bap.Std
 open Bil.Result
 
 (** Disassemble and decode the next hunk *)
-val fetch_hunk : Z80_image.t -> int -> Z80_disassembler.Hunk.t
+val fetch_hunk : Z80_image.t -> int -> Hunk.t
 
 class context : Z80_image.t -> Options.t -> object('s)
     inherit Bili.context
 
-    method current_hunk : Z80_disassembler.Hunk.t
+    method current_hunk : Hunk.t
     method current_bil : bil
     method print_cpu : unit
 

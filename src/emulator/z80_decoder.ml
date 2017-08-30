@@ -3,19 +3,19 @@ open Bap.Std
 open Unsigned
 
 (** Ticks:
-https://github.com/CTurt/Cinoop/blob/master/source/cb.c#L275
-https://github.com/CTurt/Cinoop/blob/master/source/cpu.c#L308
+    https://github.com/CTurt/Cinoop/blob/master/source/cb.c#L275
+    https://github.com/CTurt/Cinoop/blob/master/source/cpu.c#L308
 
-IS DIFFERENT FROM
+    IS DIFFERENT FROM
 
-https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L3875
+    https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L3875
 
-wtf?!?!
+    wtf?!?!
 
-My version looks (mostly) right compared to pandocs. except for ld that takes 20 wtf.
-ctrl-f "CPU Instruction Set"
+    My version looks (mostly) right compared to pandocs. except for ld that takes 20 wtf.
+    ctrl-f "CPU Instruction Set"
 
-http://bgb.bircd.org/pandocs.htm#cgbregisters
+    http://bgb.bircd.org/pandocs.htm#cgbregisters
 *)
 
 let verbose = true
@@ -77,24 +77,29 @@ let decode_extended bytes pos cc =
   let (!) x = `Imm (Word.of_int ~width:8 x) in
   let (~>) = cc in
   match bytes with
-  | [code;_;_] ->
+  | [code; _; _] ->
     let reg = reg_from_code code in
-    (match cb_insn_from_code code with
-     | `BIT as insn ->
-       let idx = idx_from_code code in
-       (match reg with
-        | `HL -> ~> (insn,[!idx ; reg]) 2 12
-        | _ -> ~> (insn,[!idx ; reg]) 2 8)
-     | `RES | `SET as insn ->
-       let idx = idx_from_code code in
-       (match reg with
-        | `HL -> ~> (insn,[!idx ; reg]) 2 16
-        | _ -> ~> (insn,[!idx ; reg]) 2 8)
-     | `ROT ->
-       let insn = decode_rot code in
-       (match reg with
-        | `HL -> ~> (insn,[reg]) 2 16
-        | _ -> ~> (insn,[reg]) 2 8))
+    begin match cb_insn_from_code code with
+      | `BIT as insn ->
+        let idx = idx_from_code code in
+        begin match reg with
+          | `HL -> ~> (insn,[!idx; reg]) 2 12
+          | _ -> ~> (insn,[!idx; reg]) 2 8
+        end
+      | `RES
+      | `SET as insn ->
+        let idx = idx_from_code code in
+        begin match reg with
+          | `HL -> ~> (insn,[!idx; reg]) 2 16
+          | _ -> ~> (insn,[!idx; reg]) 2 8
+        end
+      | `ROT ->
+        let insn = decode_rot code in
+        begin match reg with
+          | `HL -> ~> (insn, [reg]) 2 16
+          | _ -> ~> (insn, [reg]) 2 8
+        end
+    end
   | _ -> ~> (`Undef,[]) 1 0
 
 (** TIMINGS:

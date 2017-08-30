@@ -10,9 +10,6 @@ type mem = Memory.t
 
 exception Lifting_failed of string
 
-(** ~~~~~~~~~~~~ *)
-(** ~~~ Reg ~~~~ *)
-(** ~~~~~~~~~~~~ *)
 module Z80_reg8 = struct
   (** General purpose registers *)
   type gpr = [
@@ -26,7 +23,8 @@ module Z80_reg8 = struct
     | `L (* Used with `H *)
     | `I (* Interrupts *)
     | `R (* Refresh register *)
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type t = gpr [@@deriving sexp]
 
@@ -57,7 +55,8 @@ module Z80_reg16 = struct
     | `SP (* Stack pointer *)
     | `IX (* Index register, like HL, but slower *)
     | `IY (* Index register *)
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type t = gpr [@@deriving sexp]
 
@@ -73,9 +72,6 @@ end
 
 type z80_reg16 = Z80_reg16.t [@@deriving sexp]
 
-(** ~~~~~~~~~~~~ *)
-(** ~~~ Cond ~~~ *)
-(** ~~~~~~~~~~~~ *)
 module Z80_cond = struct
   type cond = [
     | `FZ
@@ -87,7 +83,8 @@ module Z80_cond = struct
     | `FS
     | `FN
     | `FH
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type t = cond [@@deriving sexp]
 
@@ -100,18 +97,8 @@ end
 
 type z80_cond = Z80_cond.t [@@deriving sexp]
 
-
-
-(** ~~~~~~~~~~~~ *)
-(** ~~~ Imm8 ~~~ *)
-(** ~~~~~~~~~~~~ *)
 module Imm8 = struct
   type t = UInt8.t
-  (** Make a UInt 8 module that implements sexp *)
-  (**
-     val t_of_sexp : Sexp.t -> t
-     val sexp_of_t : t -> Sexp.t
-  *)
 
   let t_of_sexp sexp = UInt8.of_int (Int.t_of_sexp sexp)
   let sexp_of_t uint = Int.sexp_of_t (UInt8.to_int uint)
@@ -126,27 +113,16 @@ module Imm8 = struct
     to_string imm
 end
 
-(** A nicer name for Imm8.t. Currently unused. Can't substitute
-    below, it breaks compliation (doesn't see imm8_of_sexp. Same for
-    reg *)
 type imm8 = Imm8.t
 
-
-
-
-(** ~~~~~~~~~~~~ *)
-(** ~~~~ Op ~~~~ *)
-(** ~~~~~~~~~~~~ *)
 module Z80_op = struct
-  (** We will have an array of operands and pattern match against it,
-      in combination with Insn. *)
-
-  type t =[
+  type t = [
     | z80_reg8
     | z80_reg16
     | z80_cond
-    | `Imm of word (*TODO imm16 dedicated type to avoid x2 Imm(8)s? *)
-  ] [@@deriving sexp_of]
+    | `Imm of word
+  ]
+  [@@deriving sexp_of]
 
   let pp ppf op =
     match op with
@@ -161,7 +137,8 @@ module Z80_insn = struct
     | `BIT (* Tests if the specified bit is set. *)
     | `CPL (* CPL inverts all bits of A.*)
     | `SET (* Sets the specified bit. *)
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type mem = [
     (* The LD instruction is used to put the value from one place into
@@ -183,7 +160,8 @@ module Z80_insn = struct
        decrements BC) until BC=0. Note that if BC=0 before this
        instruction is called, it will loop around until BC=0 again. *)
     | `LDIR
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type branch = [
     | `CALL
@@ -194,7 +172,8 @@ module Z80_insn = struct
     | `JP
     (* Relative jumps to the address. *)
     | `JR
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type general = [
     | `ADC
@@ -327,7 +306,8 @@ module Z80_insn = struct
        result in a zero. The final answer is stored to the
        accumulator. *)
     | `XOR
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   type t = [
     | general
@@ -335,7 +315,8 @@ module Z80_insn = struct
     | bits
     | mem
     | `Undef
-  ] [@@deriving sexp]
+  ]
+  [@@deriving sexp]
 
   (** The Sexp output can be improved later *)
   let pp ppf insn =

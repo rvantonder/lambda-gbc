@@ -83,19 +83,10 @@ let var_of_gpr : [ Z80.Reg8.t | Z80.Reg16.t] -> var = function
   | `IYH -> iyh
   | `IYL -> iyl
 
-(*let var_of_flag : Z80.Flag.t -> var = function
-  | `FZ -> fz
-  | `FC -> fc
-  | `FP -> fp
-  | `FS -> fs
-  | `FN -> fn
-  | `FH -> fh*)
-
 (** Either a reg or flag, but not Op *)
 let of_reg : [Z80.Reg8.t | Z80.Reg16.t ] -> var = function
   | #Z80.Reg8.t as reg -> var_of_gpr reg
   | #Z80.Reg16.t as reg -> var_of_gpr reg
-(*  | #Z80.Flag.t as flag -> var_of_flag flag*)
 
 let new_var name = Var.create name reg8_t
 

@@ -8,7 +8,6 @@ open Monad.State
 open Logging
 
 
-(** register callbacks for hooks like 'breakpoint triggered'? *)
 class context image options = object (self)
   inherit Z80_interpreter.context image options as super
 
@@ -27,7 +26,6 @@ class context image options = object (self)
   method print_breakpoints =
     List.iter self#breakpoints ~f:(fun bp ->
         printf "0x%x\n%!" bp)
-
 end
 
 type send_event_stream = (Request.t option -> unit)
@@ -47,20 +45,11 @@ class ['a] z80_interpreter_debugger image options send_stream =
     method! step_insn =
       super#step_insn >>= fun () ->
       get () >>= fun ctxt ->
-      (*let pc = match ctxt#pc with
-        | Bil.Imm w -> Word.to_int w |> ok_exn
-        | _ ->
-          log_ev_cpu_dbg_pc_undef "PC undefined!";
-          failwith "PC undefined!" in
-      if (List.exists ctxt#breakpoints ~f:((=) pc)) then
-        (log_ev_cpu_bp_trigger @@ sprintf "BP hit: 0x%x" pc;
-         log_ev_cpu_rq_snd "Pause";
-         send_stream (Some Request.Pause));*)
       return ()
 
     (** In debug mode, do not call super eval_special, which wil terminate and say
         'not implimented' *)
-    method! eval_special s=
+    method! eval_special s =
       send_stream (Some Request.Pause);
       return ()
 
