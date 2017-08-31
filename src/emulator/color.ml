@@ -13,5 +13,5 @@ let lterm_color_of_color = function
 let style_of_color (color : t) : LTerm_style.t =
   let open LTerm_style in
   let color' = lterm_color_of_color color in
-  let style = {none with background = Some color'} in
+  let style = { none with background = Some color' } in
   style

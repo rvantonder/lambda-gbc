@@ -141,6 +141,13 @@ module Z80_interpreter_loop = struct
         "Do not handle more than one event!";
       failwith "Bad: more than one request in queue"
 
+  let storage_of_context ctxt =
+    let open Z80_env in
+    let open Option in
+    ctxt#lookup Z80_env.mem >>= fun result ->
+    match Bil.Result.value result with
+    | Bil.Mem storage -> return storage
+    | _ -> None
 
   let run
       interp
@@ -153,7 +160,12 @@ module Z80_interpreter_loop = struct
       cmd_recv_stream
       may_continue =
 
-    let screen : Screen.t = Screen.create may_continue term in
+    (*let screen : Screen.t = Screen.create may_continue term in*)
+    (*let displayed =
+      LTerm_draw.make_matrix { LTerm_geom. rows=256; cols=256 } in
+      let to_display =
+      LTerm_draw.make_matrix { LTerm_geom. rows=256; cols=256 } in
+    *)
 
     let rec update ctxt cycles_done =
       (* debug prompt *)
@@ -173,7 +185,36 @@ module Z80_interpreter_loop = struct
          can continue. If there's nothing there, it has to block and wait *)
       then begin
         begin match options.no_render with
-          | false -> Screen.render screen ctxt' may_continue >>= Lwt.return
+          | false ->
+            let storage = storage_of_context ctxt' in
+            begin match Screen.get_tiles storage with
+              | Some tiles ->
+                (* tiles is 256 x 256 list list with rgb tuples *)
+                let process_tiles tiles =
+                  let rgb_tuple_to_point (r, g, b : int * int * int) =
+                    let open LTerm_draw in
+                    { char = CamomileLibrary.UChar.of_char 'c'
+                    ; bold = false
+                    ; underline = false
+                    ; blink = false
+                    ; reverse = false
+                    ; foreground = LTerm_style.rgb r g b
+                    ; background = LTerm_style.rgb 0 0 0
+                    }
+                  in
+                  List.map ~f:(fun rgb_values ->
+                      List.map ~f:rgb_tuple_to_point rgb_values
+                      |> List.to_array) tiles
+                  |> List.to_array
+                in
+                let to_display = process_tiles tiles in
+                (*LTerm.render_update term displayed to_display >>= fun () ->*)
+                LTerm.clear_screen term >>= fun () ->
+                LTerm.render term to_display >>= fun () ->
+                Lwt.return ()
+              | None -> Lwt.return ()
+            end
+          (*Screen.render screen ctxt' may_continue >>= Lwt.return*)
           | true -> Lwt.return ()
         end >>= fun () ->
         Lwt_mvar.take may_continue >>= fun _ ->
