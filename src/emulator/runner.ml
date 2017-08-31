@@ -42,7 +42,7 @@ let start_event_loop refresh_rate_frame options image =
   let clock_loop = Thread_clock.start may_continue in
 
   Lwt.finalize
-    (fun () -> Lwt.join [interp_loop; input_loop; clock_loop])
+    (fun () -> Lwt.join [interp_loop; (*input_loop; clock_loop*)])
     (fun () -> return ())
 
 let run options image =

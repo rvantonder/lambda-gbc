@@ -314,7 +314,7 @@ let create clock_stream term : t =
 
 (** send is draw_send_stream *)
 let render
-    {ui ; send ; finished_drawing }
+    { ui ; send ; finished_drawing }
     (ctxt : Z80_interpreter_debugger.context)
     clock_stream =
   send (Some (ctxt, finished_drawing));

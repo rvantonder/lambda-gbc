@@ -228,8 +228,8 @@ let set_up_debug_interp_loop
   in
 
   let init_pc, stmts =
-    if options.bootrom then 0x0,Boot.clean_state
-    else 0x100,Boot.ready_state in
+    if options.bootrom then 0x0, Boot.clean_state
+    else 0x100, Boot.ready_state in
 
   let ctxt = new Z80_interpreter_debugger.context image options in
   let ctxt = ctxt#with_pc (Bil.Imm (w16 init_pc)) in

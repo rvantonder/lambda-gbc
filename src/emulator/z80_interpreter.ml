@@ -297,15 +297,14 @@ class context image options = object(self : 's)
   (** Lift hunk *)
   method lift =
     let bil = Lifter.lift current_hunk.stmt in
-    if options.di then
-      self#print_lifted_stmts bil;
+    if options.di then self#print_lifted_stmts bil;
     {< current_bil = bil >}
 
   (** Fetch a cached hunk/bil, otherwise decode and lift *)
   method load_next =
     let pc = get_pc self in
     try match Array.get insn_cache pc with
-      | Some (hunk,bil) -> {< current_hunk = hunk; current_bil = bil >}
+      | Some (hunk, bil) -> {< current_hunk = hunk; current_bil = bil >}
       | None ->
         self#decode |> fun s ->
         s#lift |> fun s' ->
