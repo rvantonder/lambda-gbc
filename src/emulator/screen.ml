@@ -23,6 +23,26 @@ open Logging
 
 let verbose = false
 
+let white_screen_ : 'a list list option ref = ref None
+
+let white_screen =
+  match !white_screen_ with
+  | Some x -> x
+  | None ->
+    let l = ref [] in
+    let row = ref [] in
+
+    for _ = 0 to 255 do
+      row := (255, 255, 255)::!row
+    done;
+
+    for _ = 0 to 255 do
+      l :=  !row::!l
+    done;
+    white_screen_ := Some !l;
+    !l
+
+
 let bit_pair_to_rgb bit1 bit2 =
   match bit1,bit2 with
   | 1,1 -> (255, 255, 255)
@@ -90,7 +110,7 @@ let print_flat_row row =
       | _ -> ())
 
 (**
-   tile_row: one row of 32 tiles. Tile dimensions: 32 x 1.
+    tile_row: one row of 32 tiles. Tile dimensions: 32 x 1.
     Pixel dimensions: 256 x 8.
 
     Take the i'th row from each of the tiles and stitch them together into
@@ -100,7 +120,7 @@ let stitch_tile_row tile_row i =
   List.fold ~init:[] tile_row ~f:(fun acc l ->
       List.append acc (List.nth_exn l i))
 
-(** 1024 tiles *)
+(** a list of 1024 tiles come in *)
 let tiles_to_pixel_grid tiles =
   (* 32 x 32 tile grid. grid_rows has size 32 (one element = one row *)
   let grid_rows = List.groupi tiles ~break:(fun i _ _ -> i mod 32 = 0) in
@@ -116,7 +136,7 @@ let tiles_to_pixel_grid tiles =
   (* we used concat_map and produced 65536 pixels. split at 256 *)
   List.groupi rows' ~break:(fun i _ _ -> i mod 256 = 0)
 
-(** Tiles: 1024 element list with 8x8 entries becomes 256x256 grid *)
+(** Tiles: 1024 element list with 8x8 entries becomes 256 x 256 grid *)
 let print_ascii_screen tiles =
   List.iteri tiles ~f:(fun i row ->
       print_flat_row row;
@@ -210,6 +230,9 @@ let get_tiles storage =
   match tiles_of_idxs storage base idxs with
   (* VRAM does not contain values for 1024 tiles *)
   | Error _ -> None
+  (* tiles here is a list of 1024 tiles (32 x 32). A tile is
+     represented as a list list. The outer list is a row. The inner
+     list is rgb tuple for each pixel *)
   | Ok tiles ->
     (* tiles' :
        [
@@ -235,6 +258,7 @@ let get_tiles storage =
     *)
     let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
     let tiles' = tiles_to_pixel_grid tiles' in
+    (* return 256 x 256 list list with rgb tuples *)
     return tiles'
 
 (** [send] is the member that triggers rendering: ui is enqueued with
@@ -288,33 +312,36 @@ let tiles_from_mem ctxt clock_stream =
 
 (** TODO: why if i raise exception here does it get ignored? *)
 (** Warning: double check this. on_success returns immediately *)
-let draw draw_recv_stream ui matrix clock_stream : unit =
+let draw recv_context_stream ui matrix clock_stream : unit =
   let open LTerm_geom in
-  Lwt_stream.next draw_recv_stream ||> fun (ctxt,finished_drawing) ->
-    (*log_render "Received ctxt to draw";*)
-    tiles_from_mem ctxt clock_stream ||> fun tiles ->
-      (match tiles with
-       | Some tiles ->
-         let size = LTerm_ui.size ui in
-         let lterm_ctxt = LTerm_draw.context matrix size in
-         LTerm_draw.clear lterm_ctxt;
-         draw_bg ctxt lterm_ctxt tiles;
-       | None -> ());
-      Lwt.on_success (Lwt_mvar.put finished_drawing ()) ident
+  Lwt_stream.next recv_context_stream
+  ||> fun (ctxt, finished_drawing) ->
+    tiles_from_mem ctxt clock_stream
+    ||> begin function
+      | Some tiles ->
+        let size = LTerm_ui.size ui in
+        let lterm_ctxt = LTerm_draw.context matrix size in
+        LTerm_draw.clear lterm_ctxt;
+        draw_bg ctxt lterm_ctxt tiles;
+      | None -> ()
+    end;
+    Lwt.on_success (Lwt_mvar.put finished_drawing ()) ident
 
 let create clock_stream term : t =
-  let draw_recv_stream, draw_send_stream = Lwt_stream.create () in
+  let recv_context_stream, send_context_stream = Lwt_stream.create () in
   let finished_drawing = Lwt_mvar.create () in
   (* remove the default variable from finished_drawing *)
   Lwt.on_success (Lwt_mvar.take finished_drawing) ident;
   let ui = LTerm_ui.create term (fun ui matrix ->
-      draw draw_recv_stream ui matrix clock_stream) in
-  { ui; send = draw_send_stream; finished_drawing }
+      draw recv_context_stream ui matrix clock_stream) in
+  { ui; send = send_context_stream; finished_drawing }
 
+(* FIRST ISSUE: sending context is expensive *)
+(* SECOND ISSUE: renders each pixel every time. what about what just changes?*)
 
 (** send is draw_send_stream *)
 let render
-    { ui ; send ; finished_drawing }
+    { ui; send; finished_drawing }
     (ctxt : Z80_interpreter_debugger.context)
     clock_stream =
   send (Some (ctxt, finished_drawing));
