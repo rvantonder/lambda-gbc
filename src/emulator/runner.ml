@@ -38,7 +38,7 @@ let start_event_loop refresh_rate_frame options image =
       send_stream
       may_continue
   in
-  let input_loop = Thread_debugger.set_up_input_loop term send_stream in
+  (*let input_loop = Thread_debugger.set_up_input_loop term send_stream in*)
   let clock_loop = Thread_clock.start may_continue in
 
   Lwt.finalize

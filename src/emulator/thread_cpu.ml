@@ -149,6 +149,9 @@ module Z80_interpreter_loop = struct
     | Bil.Mem storage -> return storage
     | _ -> None
 
+  let cycles_done = ref 0
+  let context : Z80_interpreter_debugger.context option ref = ref None
+
   let run
       interp
       step_insn
@@ -160,67 +163,63 @@ module Z80_interpreter_loop = struct
       cmd_recv_stream
       may_continue =
 
-    (*let screen : Screen.t = Screen.create may_continue term in*)
-    (*let displayed =
-      LTerm_draw.make_matrix { LTerm_geom. rows=256; cols=256 } in
-      let to_display =
-      LTerm_draw.make_matrix { LTerm_geom. rows=256; cols=256 } in
-    *)
-    let draw ui matrix = () in
-    let ui = LTerm_ui.create term draw in
+    (* initialize context mutable var *)
+    context := Some ctxt;
 
-    let rec update ctxt cycles_done =
-      (* debug prompt *)
-      (*handle_debug_rq_or_step_once
-        cmd_recv_stream ctxt step_frame
-        step_insn
-        screen*)
-      Lwt.return (step_insn ctxt) >>= fun ctxt' ->
-      let cycles_delta = ctxt'#cpu_clock - ctxt#cpu_clock in
-      let cycles_done = cycles_done + cycles_delta in
+    (*log_clock "Thread_cpu run";*)
 
-      let ctxt' = Gpu.update ctxt' cycles_delta in
+    (* Run one frame, modify the matrix. This function will be called
+       at 60 hz *)
+    let draw ui matrix =
+      (*log_clock "DRAW INVOKED!@.";*)
+      let rec loop_until_frame_complete ctxt cycles_done_internal =
+        let ctxt' = step_insn ctxt in
+        let cycles_delta = ctxt'#cpu_clock - ctxt#cpu_clock in
+        let cycles_done_internal = cycles_done_internal + cycles_delta in
+        let ctxt' = Gpu.update ctxt' cycles_delta in
 
-      if cycles_done >= 70244
-      (* may_continue is a synchronising variable. We put something into
-         may_continue at 60hz, and when that something is there, this loop
-         can continue. If there's nothing there, it has to block and wait *)
-      then begin
-        begin match options.no_render with
-          | false ->
-            let storage = storage_of_context ctxt' in
-            begin match Screen.get_tiles storage with
-              | Some tiles ->
-                (* tiles is 256 x 256 list list with rgb tuples *)
-                let process_tiles tiles =
-                  let rgb_tuple_to_point (r, g, b : int * int * int) =
-                    let open LTerm_draw in
-                    { char = CamomileLibrary.UChar.of_char 'c'
-                    ; bold = false
-                    ; underline = false
-                    ; blink = false
-                    ; reverse = false
-                    ; foreground = LTerm_style.rgb r g b
-                    ; background = LTerm_style.rgb 0 255 0
-                    }
+        (* update matrix *)
+        if cycles_done_internal >= 70244 then begin
+          let storage = storage_of_context ctxt' in
+          begin match Screen.get_tiles storage with
+            | Some tiles ->
+              for i = 0 to 255 do
+                for j = 0 to 255 do
+                  let r,g,b =
+                    List.nth_exn tiles i
+                    |> fun row -> List.nth_exn row j
                   in
-                  List.map ~f:(fun rgb_values ->
-                      List.map ~f:rgb_tuple_to_point rgb_values
-                      |> List.to_array) tiles
-                  |> List.to_array
-                in
-                Lwt.return ()
-              | None -> Lwt.return ()
-            end
-          (*Screen.render screen ctxt' may_continue >>= Lwt.return*)
-          | true -> Lwt.return ()
-        end >>= fun () ->
-        Lwt_mvar.take may_continue >>= fun _ ->
-        update ctxt' (cycles_done - 70244)
-      end
-      else update ctxt' cycles_done
+                  let point : LTerm_draw.point = matrix.(i).(j) in
+                  matrix.(i).(j) <-
+                    { point with LTerm_draw.background = LTerm_style.rgb r g b };
+                done
+              done;
+              (*log_clock "Matrix update done!"*)
+            | None ->
+              (*log_clock "Skip...";*)
+              ()
+          end;
+          context := Some ctxt';
+          cycles_done := cycles_done_internal - 70244;
+        end
+        else loop_until_frame_complete ctxt' cycles_done_internal
+      in
+      let cycles_done_internal = !cycles_done in
+      let ctxt = match !context with
+        | Some context -> context
+        | None -> failwith "Mutable context not initialized"
+      in
+      loop_until_frame_complete ctxt cycles_done_internal
     in
-    update ctxt 0
+
+    LTerm_ui.create term draw >>= fun ui ->
+    let rec loop () =
+      Lwt_unix.yield () >>= fun () ->
+      Lwt_mvar.take may_continue >>= fun () ->
+      LTerm_ui.draw ui;
+      loop ()
+    in
+    loop ()
 end
 
 (** Later, recv_stream here will be input *)
