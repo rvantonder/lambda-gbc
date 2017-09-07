@@ -192,7 +192,7 @@ module Z80_interpreter_loop = struct
           log_clock @@
           Format.sprintf
             "x offset: %d; y offset: %d" scroll_offset_x scroll_offset_y;
-          begin match Screen.get_tiles storage with
+          begin match Screen.get_tiles_new storage with
             | Some tiles ->
               for i = 0 to 143 do
                 for j = 0 to 159 do

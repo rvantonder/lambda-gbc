@@ -34,22 +34,47 @@ class memory_array image options : Bil.storage = object(self : 's)
 
   method save key data =
     let idx = Word.to_int key |> ok_exn in
-    Array.set storage idx (Some data);
+    storage.(idx) <- (Some data);
     {< storage = storage >}
 
   method private try_resolve_load_from_image idx =
     let w8 = Word.of_int ~width:8 in
     match Z80_image.get_bytes image ~position:idx ~size:1 with
     | [|v|] ->
-      Array.set storage idx (Some (w8 (UInt8.to_int v)));
+      storage.(idx) <- (Some (w8 (UInt8.to_int v)));
       Some (w8 (UInt8.to_int v))
     | [||]-> None
     | _ -> failwith "1 byte requested, more than 1 returned."
 
   method load key : word option =
     let idx = Word.to_int key |> ok_exn in
-    try match Array.get storage idx with
+    try match storage.(idx) with
       | Some v -> Some v
       | None -> self#try_resolve_load_from_image idx
+    with | _ -> None
+end
+
+class memory_table image options : Bil.storage = object(self : 's)
+  val storage = Hashtbl.create ~size:10 ~hashable:Word.hashable ()
+
+  method save key data =
+    Hashtbl.set storage key data;
+    {< storage = storage >}
+
+  method private try_resolve_load_from_image key : word option =
+    let idx = Word.to_int key |> ok_exn in
+    let w8 = Word.of_int ~width:8 in
+    match Z80_image.get_bytes image ~position:idx ~size:1 with
+    | [|v|] ->
+      let v = w8 (UInt8.to_int v) in
+      Hashtbl.set storage key v;
+      Some v
+    | [||]-> None
+    | _ -> failwith "1 byte requested, more than 1 returned."
+
+  method load key : word option =
+    try match Hashtbl.find storage key with
+      | Some v -> Some v
+      | None -> self#try_resolve_load_from_image key
     with | _ -> None
 end

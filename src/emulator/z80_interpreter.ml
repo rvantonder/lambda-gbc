@@ -343,7 +343,7 @@ class ['a] z80_interpreter image options = object(self)
           aqua (Bap.Std.Stmt.to_string stmt |> normalize) restore)
 
   (** Memory related operations (expi) *)
-  method! empty = new Z80_memory.memory_array image options
+  method! empty = new Z80_memory.memory_table image options
 
   (** When it seems Exp.Load in bil, it first performs
       expi#eval_load, which internally calls #load_word, which calls

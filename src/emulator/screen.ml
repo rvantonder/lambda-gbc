@@ -198,11 +198,12 @@ let get_tiles storage =
   in
   let mask = Word.of_int ~width:8 0x10 in
   let data_display_select = match Word.(lcdc land mask = (zero 8)) with
-    | true -> "vram-tile-set-0" (*-127 - 128*)
+    | true -> "vram-tile-set-0"  (* -127 - 128 *)
     | false -> "vram-tile-set-1" (* 0 - 255 *)
   in
   let map_segment = Gbc_segment.segment_of_name map_display_select in
-  let data_display_segment = Gbc_segment.segment_of_name data_display_select in
+  let data_display_segment =
+    Gbc_segment.segment_of_name data_display_select in
   let range =
     List.range map_segment.pos (map_segment.pos + map_segment.size) in
   (* Nasty fucking vram hack just reading first addr *)
@@ -260,6 +261,49 @@ let get_tiles storage =
     let tiles' = tiles_to_pixel_grid tiles' in
     (* return 256 x 256 list list with rgb tuples *)
     return tiles'
+
+let get_tiles_new storage =
+  let open Option in
+  let cast16 = Addr.of_int ~width:16 in
+  storage >>= fun storage ->
+  let open Gbc_segment in
+  storage#load (Addr.of_int ~width:16 0xFF40) >>= fun lcdc ->
+  let mask = Word.of_int ~width:8 0x8 in
+  let map_display_select = match Word.(lcdc land mask = (zero 8)) with
+    | true -> "vram-tile-map-0"
+    | false -> "vram-tile-map-1"
+  in
+  let mask = Word.of_int ~width:8 0x10 in
+  let data_display_select = match Word.(lcdc land mask = (zero 8)) with
+    | true -> "vram-tile-set-0"  (* -127 - 128 *)
+    | false -> "vram-tile-set-1" (* 0 - 255 *)
+  in
+  let map_segment = Gbc_segment.segment_of_name map_display_select in
+  let data_display_segment =
+    Gbc_segment.segment_of_name data_display_select in
+  let base = data_display_segment.pos in
+  let tiles = ref [] in
+  let tile = ref [] in
+  (* If a word does not exist in memory, bail and return None *)
+  try
+    for idx = map_segment.pos to map_segment.pos + map_segment.size - 1 do
+      match storage#load (cast16 idx) with
+      | Some tile_addr ->
+        let tile_addr = Addr.to_int tile_addr |> ok_exn in
+        for i = base+(tile_addr*16) to (base+16+(tile_addr*16))-1 do
+          match storage#load (cast16 i) with
+          | Some word -> tile := (word::!tile)
+          | None -> ()
+        done;
+        tiles := (List.rev !tile)::!tiles;
+        tile := []
+      | None -> ()
+    done;
+    let tiles' = List.map (List.rev !tiles) ~f:tile_bytes_to_rgb in
+    let tiles' = tiles_to_pixel_grid tiles' in
+    Some tiles'
+  with | _ -> None
+
 
 (** [send] is the member that triggers rendering: ui is enqueued with
     an item to draw. When then call LTerm_ui.draw to trigger the
