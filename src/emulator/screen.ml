@@ -158,7 +158,7 @@ let get_tiles_new storage =
   let tile = ref [] in
   (* If a word does not exist in memory, bail and return None *)
   try
-    for tile_addr = map_segment.pos to
+    for tile_addr = map_segment.pos to (* TODO ADD OFFSET HERE *)
         map_segment.pos + map_segment.size - 1 do
       (* 1024 tiles arranged as 32 x 32 tiles.
          Each tile is 8x8 pixels.
