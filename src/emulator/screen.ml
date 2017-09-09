@@ -68,6 +68,7 @@ let byte_pair_to_rgb_list byte_pair =
 
 (**
    Takes a list of 16 bytes, which represent one tile.
+   Turns into an 8x8 list of rgb values:
    8x8 pixels = 64 pixels, 16 bytes.
 
    2 bytes per row, 8 rows. 16 bytes for 8 rows
@@ -222,7 +223,13 @@ let get_tiles_new storage =
 
           tile 1024: [ row 0 : ... ... row 8 : ... ]
        ] *)
-    let tiles' = List.map !tiles ~f:tile_bytes_to_rgb in
+    let tile_array = List.to_array !tiles in
+    let tiles' = Array.create ~len:1024 [[]] in
+    for i = 0 to 1023 do
+      let rgb_tile = tile_bytes_to_rgb tile_array.(i) in
+      tiles'.(i) <- rgb_tile
+    done;
+    let tiles' = Array.to_list tiles' in
     (* return 256 x 256 list list with rgb tuples *)
     let tiles' = tiles_to_pixel_grid tiles' in
     Some tiles'
