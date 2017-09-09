@@ -183,7 +183,9 @@ module Z80_interpreter_loop = struct
           let storage = storage_of_context ctxt' in
           begin match storage with
             | Some storage ->
+              (* .render adds about .06 on smallest zoom *)
               begin match Screen.render matrix storage with
+                (*begin match Some () with*)
                 | Some () ->
                   (*log_clock "Matrix update done!"*)
                   ()
@@ -208,6 +210,7 @@ module Z80_interpreter_loop = struct
 
     LTerm_ui.create term draw >>= fun ui ->
     let rec loop () =
+      (* .016 just to run an empty loop if we comment out draw :( *)
       Lwt_unix.yield () >>= fun () ->
       Lwt_mvar.take may_continue >>= fun () ->
       LTerm_ui.draw ui;

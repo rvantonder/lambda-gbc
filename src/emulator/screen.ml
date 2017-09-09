@@ -23,26 +23,6 @@ open Logging
 
 let verbose = false
 
-let white_screen_ : 'a list list option ref = ref None
-
-let white_screen =
-  match !white_screen_ with
-  | Some x -> x
-  | None ->
-    let l = ref [] in
-    let row = ref [] in
-
-    for _ = 0 to 255 do
-      row := (255, 255, 255)::!row
-    done;
-
-    for _ = 0 to 255 do
-      l :=  !row::!l
-    done;
-    white_screen_ := Some !l;
-    !l
-
-
 let bit_pair_to_rgb bit1 bit2 =
   match bit1,bit2 with
   | 1,1 -> (255, 255, 255)
@@ -227,11 +207,13 @@ let render matrix storage =
           List.nth_exn tiles (i+scroll_offset_y)
           |> fun row -> List.nth_exn row (j+scroll_offset_x)
         in
-        let point : LTerm_draw.point =
-          matrix.(i).(j) in
-        matrix.(i).(j) <-
-          { point with
-            LTerm_draw.background = LTerm_style.rgb r g b }
+        let point : LTerm_draw.point = matrix.(i).(j) in
+        matrix.(i).(j*2) <-
+          { matrix.(i).(j) with
+            LTerm_draw.background = LTerm_style.rgb r g b };
+        matrix.(i).(j*2+1) <-
+          { matrix.(i).(j) with
+            LTerm_draw.background = LTerm_style.rgb r g b };
       done
     done;
     Some ()
