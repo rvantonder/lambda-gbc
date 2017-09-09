@@ -51,21 +51,6 @@ let bit_pair_to_rgb bit1 bit2 =
   | 0,0 -> (0, 0, 0)
   | _ -> failwith "Impossible bit matching"
 
-(** [byte0,byte1] : [(rgb1,rgb1,rgb1),...,(rgb8,rgb8,rgb8)] *)
-let byte_pair_to_rgb_list byte_pair =
-  let mask = Word.one 8 in
-  let rec aux i acc =
-    if i = 8 then acc
-    else match byte_pair with
-      | byte1::byte2::[] ->
-        let shiftw = Word.of_int ~width:8 i in
-        let bit1 = Word.((byte1 lsr shiftw) land mask) in
-        let bit2 = Word.((byte2 lsr shiftw) land mask) in
-        let (!) = Fn.compose ok_exn Word.to_int in
-        aux (i+1) ((bit_pair_to_rgb !bit1 !bit2)::acc)
-      | _ -> failwith "only two elements expected" in
-  aux 0 []
-
 (**
    Takes a list of 16 bytes, which represent one tile.
    Turns into an 8x8 list of rgb values:
@@ -75,38 +60,35 @@ let byte_pair_to_rgb_list byte_pair =
    2 bits per pixel
    tile : 16 bytes list
 *)
-let tile_bytes_to_rgb tile =
+let tile_bytes_to_rgb (tile : word list ref)
+  : ((int * int * int) list list) =
   (**
      row 0 : [byte0;byte1]
      row 1 : [byte2;byte3]
      ...
      row 8 : [byte15;byte16]
   *)
-  let rows = List.foldi ~init:[] tile ~f:(fun i acc byte ->
-      match i % 2 with
-      | 1 ->
-        (match acc with
-         | hd::tl -> (byte::hd)::tl
-         | [] -> acc)
-      | 0 -> [byte]::acc
-      | _ -> failwith "not multiple of two") |> List.rev in
-  (* Page 24, gameboy manual *)
-  (**
-     row 0 : [(rgb1,rgb1,rgb1), (rgb2,rgb2,rgb2) ... (rgb8,rgb8,rgb8)]
-     row 1 : ...
-     ...
-     row 8 : ...
-  *)
-  let tile = List.map rows ~f:byte_pair_to_rgb_list in
-  tile
-
-let print_flat_row row =
-  List.iteri row ~f:(fun i -> function
-      | 255,255,255 -> printf "z"
-      | 192,192,192 -> printf "x"
-      | 96,96,96 -> printf "v"
-      | 0,0,0 -> printf "o"
-      | _ -> ())
+  let mask = Word.one 8 in
+  let rgb_tile_list = ref [] in
+  let rows = ref [] in
+  (* for each row *)
+  for i = 0 to 7 do
+    (* update (rgb) list list *)
+    let byte1 : word = List.nth_exn !tile (i*2) in
+    let byte2 : word = List.nth_exn !tile ((i*2)+1) in
+    for j = 0 to 7 do (* for each bit *)
+      (** [byte0,byte1] : [(rgb1,rgb1,rgb1),...,(rgb8,rgb8,rgb8)] *)
+      let shiftw = Word.of_int ~width:8 j in
+      let bit1 = Word.((byte1 lsr shiftw) land mask) in
+      let bit2 = Word.((byte2 lsr shiftw) land mask) in
+      let (!!) = Fn.compose ok_exn Word.to_int in
+      let rgb = bit_pair_to_rgb !!bit1 !!bit2 in
+      rgb_tile_list := rgb::!rgb_tile_list
+    done;
+    rows := !rows@[!rgb_tile_list];
+    rgb_tile_list := [];
+  done;
+  !rows
 
 (**
     tile_row: one row of 32 tiles. Tile dimensions: 32 x 1.
@@ -134,12 +116,6 @@ let tiles_to_pixel_grid tiles =
   in
   (* we used concat_map and produced 65536 pixels. split at 256 *)
   List.groupi rows' ~break:(fun i _ _ -> i mod 256 = 0)
-
-(** Tiles: 1024 element list with 8x8 entries becomes 256 x 256 grid *)
-let print_ascii_screen tiles =
-  List.iteri tiles ~f:(fun i row ->
-      print_flat_row row;
-      printf "\n")
 
 (**
    http://www.codeslinger.co.uk/pages/projects/gameboy/graphics.html
@@ -202,11 +178,13 @@ let get_tiles_new storage =
           | Some word -> tile := (!tile@[word])
           | None -> ()
         done;
-        tiles := !tiles@[!tile];
+        (* process the tile: turn bytes into rgb*)
+        let rgb_tile = tile_bytes_to_rgb tile in
+        tiles := !tiles@[rgb_tile];
         tile := []
       | None -> ()
     done;
-    (* tiles' :
+    (* !tiles :
        [
           tile 1:      [
                        row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
@@ -223,15 +201,8 @@ let get_tiles_new storage =
 
           tile 1024: [ row 0 : ... ... row 8 : ... ]
        ] *)
-    let tile_array = List.to_array !tiles in
-    let tiles' = Array.create ~len:1024 [[]] in
-    for i = 0 to 1023 do
-      let rgb_tile = tile_bytes_to_rgb tile_array.(i) in
-      tiles'.(i) <- rgb_tile
-    done;
-    let tiles' = Array.to_list tiles' in
     (* return 256 x 256 list list with rgb tuples *)
-    let tiles' = tiles_to_pixel_grid tiles' in
+    let tiles' = tiles_to_pixel_grid !tiles in
     Some tiles'
   with | _ -> None
 

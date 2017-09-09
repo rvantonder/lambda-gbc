@@ -10,5 +10,3 @@ val render :
   LTerm_draw.point array array ->
   Bil.storage
   -> unit option
-
-val print_ascii_screen : (int * int * int) list list -> unit
