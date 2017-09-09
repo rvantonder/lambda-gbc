@@ -123,8 +123,8 @@ let tiles_to_pixel_grid tiles =
   (* 32 x 32 tile grid. grid_rows has size 32 (one element = one row *)
   let grid_rows = List.groupi tiles ~break:(fun i _ _ -> i mod 32 = 0) in
   let rows' = List.concat_map grid_rows ~f:(fun row ->
-      (* row: one row of 32 tiles which is 256 pixels in length, 8 pixels thick.
-         stitch row for row and concatenate into one big list *)
+      (* row: one row of 32 tiles which is 256 pixels in length, 8 pixels
+         thick.stitch row for row and concatenate into one big list *)
       let rec aux i acc =
         if i = 8 then acc
         else aux (i+1) (acc @ (stitch_tile_row row i))
@@ -161,7 +161,6 @@ let print_ascii_screen tiles =
 let get_tiles_new storage =
   let open Option in
   let cast16 = Addr.of_int ~width:16 in
-  storage >>= fun storage ->
   let open Gbc_segment in
   storage#load (Addr.of_int ~width:16 0xFF40) >>= fun lcdc ->
   let mask = Word.of_int ~width:8 0x8 in
@@ -199,10 +198,10 @@ let get_tiles_new storage =
            tile *)
         for i = base+(tile_addr*16) to (base+(tile_addr*16)+16)-1 do
           match storage#load (cast16 i) with
-          | Some word -> tile := (word::!tile)
+          | Some word -> tile := (!tile@[word])
           | None -> ()
         done;
-        tiles := (List.rev !tile)::!tiles;
+        tiles := !tiles@[!tile];
         tile := []
       | None -> ()
     done;
@@ -223,19 +222,39 @@ let get_tiles_new storage =
 
           tile 1024: [ row 0 : ... ... row 8 : ... ]
        ] *)
-    let tiles' = List.map (List.rev !tiles) ~f:tile_bytes_to_rgb in
+    let tiles' = List.map !tiles ~f:tile_bytes_to_rgb in
     (* return 256 x 256 list list with rgb tuples *)
     let tiles' = tiles_to_pixel_grid tiles' in
     Some tiles'
   with | _ -> None
 
 
-(** TODO: make this work with utils, but DO NOT put in
-    utils because circular build dep *)
-let storage_of_context ctxt =
-  let open Z80_env in
-  let open Option in
-  ctxt#lookup Z80_env.mem >>= fun result ->
-  match Bil.Result.value result with
-  | Bil.Mem storage -> return storage
-  | _ -> None
+let render matrix storage =
+  let scroll_offset addr =
+    let addr = Addr.of_int ~width:16 addr in
+    let value = storage#load addr in
+    match value with
+    | Some v -> Word.to_int v |> Or_error.ok_exn
+    | _ -> 0 in
+  let scroll_offset_y = scroll_offset 0xFF42 in
+  let scroll_offset_x = scroll_offset 0xFF43 in
+  log_clock @@
+  Format.sprintf
+    "x offset: %d; y offset: %d" scroll_offset_x scroll_offset_y;
+  match get_tiles_new storage with
+  | Some tiles ->
+    for i = 0 to 143 do
+      for j = 0 to 159 do
+        let r,g,b =
+          List.nth_exn tiles (i+scroll_offset_y)
+          |> fun row -> List.nth_exn row (j+scroll_offset_x)
+        in
+        let point : LTerm_draw.point =
+          matrix.(i).(j) in
+        matrix.(i).(j) <-
+          { point with
+            LTerm_draw.background = LTerm_style.rgb r g b }
+      done
+    done;
+    Some ()
+  | None -> None

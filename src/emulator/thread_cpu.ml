@@ -181,36 +181,17 @@ module Z80_interpreter_loop = struct
         (* update matrix *)
         if cycles_done_internal >= 70244 then begin
           let storage = storage_of_context ctxt' in
-          let scroll_offset addr =
-            let addr = Addr.of_int ~width:16 addr in
-            let value = ctxt#mem_at_addr addr in
-            match value with
-            | Some v -> Word.to_int v |> Or_error.ok_exn
-            | _ -> 0 in
-          let scroll_offset_y = scroll_offset 0xFF42 in
-          let scroll_offset_x = scroll_offset 0xFF43 in
-          log_clock @@
-          Format.sprintf
-            "x offset: %d; y offset: %d" scroll_offset_x scroll_offset_y;
-          begin match Screen.get_tiles_new storage with
-            | Some tiles ->
-              for i = 0 to 143 do
-                for j = 0 to 159 do
-                  let r,g,b =
-                    List.nth_exn tiles (i+scroll_offset_y)
-                    |> fun row -> List.nth_exn row (j+scroll_offset_x)
-                  in
-                  let point : LTerm_draw.point =
-                    matrix.(i).(j) in
-                  matrix.(i).(j) <-
-                    { point with
-                      LTerm_draw.background = LTerm_style.rgb r g b }
-                done
-              done;
-              (*log_clock "Matrix update done!"*)
-            | None ->
-              (*log_clock "Skip...";*)
-              ()
+          begin match storage with
+            | Some storage ->
+              begin match Screen.render matrix storage with
+                | Some () ->
+                  (*log_clock "Matrix update done!"*)
+                  ()
+                | None ->
+                  (*log_clock "Skip...";*)
+                  ()
+              end;
+            | None -> ()
           end;
           context := Some ctxt';
           cycles_done := cycles_done_internal - 70244;
