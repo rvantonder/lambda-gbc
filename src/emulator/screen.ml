@@ -67,16 +67,14 @@ let byte_pair_to_rgb_list byte_pair =
   aux 0 []
 
 (**
-   16 bytes to a tile.
-   tile : 8x8
+   Takes a list of 16 bytes, which represent one tile.
+   8x8 pixels = 64 pixels, 16 bytes.
 
-   2 bytes per row
+   2 bytes per row, 8 rows. 16 bytes for 8 rows
    2 bits per pixel
-
    tile : 16 bytes list
 *)
 let tile_bytes_to_rgb tile =
-  (*let rows = List.groupi tile ~break:(fun i _ _ -> i mod 2 = 0) |> List.rev in*)
   (**
      row 0 : [byte0;byte1]
      row 1 : [byte2;byte3]
@@ -142,32 +140,6 @@ let print_ascii_screen tiles =
       print_flat_row row;
       printf "\n")
 
-(** one byte to 16 byte lookup *)
-let tiles_of_idxs storage base idxs : 'a list list Or_error.t =
-  let open Or_error in
-  let w16 = Addr.of_int ~width:16 16 in
-  let (!) = Fn.compose ok_exn Addr.to_int in
-  List.fold idxs ~init:(return []) ~f:(fun acc idx ->
-      (* ugly af cast from 8 to 16: *)
-      let idx = Addr.to_int idx |> ok_exn |> Addr.of_int ~width:16 in
-      (* TODO keep word*)
-      let range =
-        List.range !Addr.(base+(idx*w16)) !Addr.(base+(idx*w16)+w16) in
-      let tile : 'a list Or_error.t =
-        List.fold range ~init:(return []) ~f:(fun inner_acc addr_int ->
-            let addr = Addr.of_int ~width:16 addr_int in
-            match storage#load addr with
-            | Some word ->
-              inner_acc >>= fun inner_acc ->
-              return (word::inner_acc)
-            | None ->
-              Or_error.error_string "Could not read memory. Bailing")
-      in
-      tile >>= fun tile ->
-      acc >>= fun acc ->
-      return ((List.rev tile)::acc))
-
-
 (**
    http://www.codeslinger.co.uk/pages/projects/gameboy/graphics.html
 
@@ -186,82 +158,6 @@ let tiles_of_idxs storage base idxs : 'a list list Or_error.t =
    0: $9800-$9BFF -> Map 0
    1: $9C00-$9FFF -> Map 1
 *)
-let get_tiles storage =
-  let open Option in
-  storage >>= fun storage ->
-  let open Gbc_segment in
-  storage#load (Addr.of_int ~width:16 0xFF40) >>= fun lcdc ->
-  let mask = Word.of_int ~width:8 0x8 in
-  let map_display_select = match Word.(lcdc land mask = (zero 8)) with
-    | true -> "vram-tile-map-0"
-    | false -> "vram-tile-map-1"
-  in
-  let mask = Word.of_int ~width:8 0x10 in
-  let data_display_select = match Word.(lcdc land mask = (zero 8)) with
-    | true -> "vram-tile-set-0"  (* -127 - 128 *)
-    | false -> "vram-tile-set-1" (* 0 - 255 *)
-  in
-  let map_segment = Gbc_segment.segment_of_name map_display_select in
-  let data_display_segment =
-    Gbc_segment.segment_of_name data_display_select in
-  let range =
-    List.range map_segment.pos (map_segment.pos + map_segment.size) in
-  (* Nasty fucking vram hack just reading first addr *)
-  let ft = List.nth_exn range 0 in
-  let ft = Addr.of_int ~width:16 ft in
-  (* HACK: read MAP addr at ft *)
-  (* None means no VRAM MAP hack *)
-  storage#load ft >>= fun _ ->
-  (* If a word does not exist in memory, bail and return None *)
-  List.fold range ~init:(Some []) ~f:(fun acc addr_int ->
-      let addr = Addr.of_int ~width:16 addr_int in
-      acc >>= fun words ->
-      storage#load addr >>= fun word -> Some (word::words))
-  (* 1024 bytes *)
-  >>= fun idxs ->
-  (* tiles : 32 x 32
-     tile 0    : 16 bytes
-     tile 1    : 16 bytes
-     ...
-     tile 1024 : 16 bytes *)
-  let base = Addr.of_int ~width:16 data_display_segment.pos in
-  (* HACK 2: read DATA SET base *)
-  (* None means no VRAM SET hack *)
-  storage#load base >>= fun _ ->
-  match tiles_of_idxs storage base idxs with
-  (* VRAM does not contain values for 1024 tiles *)
-  | Error _ -> None
-  (* tiles here is a list of 1024 tiles (32 x 32). A tile is
-     represented as a list list. The outer list is a row. The inner
-     list is rgb tuple for each pixel *)
-  | Ok tiles ->
-    (* tiles' :
-       [
-          tile 1:      [
-                       row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
-                       ...
-                       row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64];
-                       ]
-          tile 2:      [
-                       row 0 : ...
-                       ...
-                       row 8 : ...
-                       ]
-
-          tile ...
-
-          tile 1024:   [
-                       row 0 : ...
-                       ...
-                       row 8 : ...
-                       ]
-       ]
-    *)
-    let tiles' = List.map tiles ~f:tile_bytes_to_rgb in
-    let tiles' = tiles_to_pixel_grid tiles' in
-    (* return 256 x 256 list list with rgb tuples *)
-    return tiles'
-
 let get_tiles_new storage =
   let open Option in
   let cast16 = Addr.of_int ~width:16 in
@@ -286,11 +182,22 @@ let get_tiles_new storage =
   let tile = ref [] in
   (* If a word does not exist in memory, bail and return None *)
   try
-    for idx = map_segment.pos to map_segment.pos + map_segment.size - 1 do
-      match storage#load (cast16 idx) with
+    for tile_addr = map_segment.pos to
+        map_segment.pos + map_segment.size - 1 do
+      (* 1024 tiles arranged as 32 x 32 tiles.
+         Each tile is 8x8 pixels.
+         Each tile is 16 bytes.
+         8 x 32 = 256.
+         tile 0    : 16 bytes
+         tile 1    : 16 bytes
+         ...
+         tile 1024 : 16 bytes *)
+      match storage#load (cast16 tile_addr) with
       | Some tile_addr ->
         let tile_addr = Addr.to_int tile_addr |> ok_exn in
-        for i = base+(tile_addr*16) to (base+16+(tile_addr*16))-1 do
+        (* read each byte of 16 bytes for the tile. There are 16 bytes in a
+           tile *)
+        for i = base+(tile_addr*16) to (base+(tile_addr*16)+16)-1 do
           match storage#load (cast16 i) with
           | Some word -> tile := (word::!tile)
           | None -> ()
@@ -299,42 +206,29 @@ let get_tiles_new storage =
         tile := []
       | None -> ()
     done;
+    (* tiles' :
+       [
+          tile 1:      [
+                       row 0 : [(rgb1,rgb1,rgb1);...;(rgb8,rgb8,rgb8)];
+                       ...
+                       row 8 : [(rgb56,rgb56,rgb56);...;(rgb64,rgb64,rgb64)];
+                       ]
+          tile 2:      [
+                       row 0 : ...
+                       ...
+                       row 8 : ...
+                       ]
+
+          tile ...
+
+          tile 1024: [ row 0 : ... ... row 8 : ... ]
+       ] *)
     let tiles' = List.map (List.rev !tiles) ~f:tile_bytes_to_rgb in
+    (* return 256 x 256 list list with rgb tuples *)
     let tiles' = tiles_to_pixel_grid tiles' in
     Some tiles'
   with | _ -> None
 
-
-(** [send] is the member that triggers rendering: ui is enqueued with
-    an item to draw. When then call LTerm_ui.draw to trigger the
-    LTerm call back that draws ui. LTerm_ui.draw is asynchronous.
-    We introduce a syncrhony variable [finished_drawing] which we
-    gave to the LTerm call back that draws the ui. It will
-    populate finished_drawing once it's finished. We block
-    until it is ready by calling Lwt_mvar.take after LTer_uil.draw *)
-type t = { ui : LTerm_ui.t Lwt.t
-         ; send :
-             (Z80_interpreter_debugger.context * unit Lwt_mvar.t) option
-             -> unit
-         ; finished_drawing : unit Lwt_mvar.t
-         }
-
-let draw_bg ctxt lterm_ctxt tiles =
-  let open Option in
-  let scroll_offset addr =
-    let addr = Addr.of_int ~width:16 addr in
-    let value = ctxt#mem_at_addr addr in
-    match value with
-    | Some v -> Some (Word.to_int v |> Or_error.ok_exn)
-    | _ -> None in
-  let scroll_offset_y = scroll_offset 0xFF42 in
-  let scroll_offset_x = scroll_offset 0xFF43 in
-  Background.from_tile_list
-    ?offset_y:scroll_offset_y
-    ?offset_x:scroll_offset_x
-    tiles
-    lterm_ctxt
-  |> Background.render
 
 (** TODO: make this work with utils, but DO NOT put in
     utils because circular build dep *)
@@ -345,51 +239,3 @@ let storage_of_context ctxt =
   match Bil.Result.value result with
   | Bil.Mem storage -> return storage
   | _ -> None
-
-let (||>) f g = Lwt.on_success f g
-
-let tiles_from_mem ctxt clock_stream =
-  let open Util in
-  let storage = storage_of_context ctxt in
-  (*Lwt_mvar.take clock_stream >>= fun _ ->*)
-  Lwt.return @@ get_tiles storage
-
-(** TODO: why if i raise exception here does it get ignored? *)
-(** Warning: double check this. on_success returns immediately *)
-let draw recv_context_stream ui matrix clock_stream : unit =
-  let open LTerm_geom in
-  Lwt_stream.next recv_context_stream
-  ||> fun (ctxt, finished_drawing) ->
-    tiles_from_mem ctxt clock_stream
-    ||> begin function
-      | Some tiles ->
-        let size = LTerm_ui.size ui in
-        let lterm_ctxt = LTerm_draw.context matrix size in
-        LTerm_draw.clear lterm_ctxt;
-        draw_bg ctxt lterm_ctxt tiles;
-      | None -> ()
-    end;
-    Lwt.on_success (Lwt_mvar.put finished_drawing ()) ident
-
-let create clock_stream term : t =
-  let recv_context_stream, send_context_stream = Lwt_stream.create () in
-  let finished_drawing = Lwt_mvar.create () in
-  (* remove the default variable from finished_drawing *)
-  Lwt.on_success (Lwt_mvar.take finished_drawing) ident;
-  let ui = LTerm_ui.create term (fun ui matrix ->
-      draw recv_context_stream ui matrix clock_stream) in
-  { ui; send = send_context_stream; finished_drawing }
-
-(* FIRST ISSUE: sending context is expensive *)
-(* SECOND ISSUE: renders each pixel every time. what about what just changes?*)
-
-(** send is draw_send_stream *)
-let render
-    { ui; send; finished_drawing }
-    (ctxt : Z80_interpreter_debugger.context)
-    clock_stream =
-  send (Some (ctxt, finished_drawing));
-  ui >>= fun ui -> LTerm_ui.draw ui;
-  (* First wait for finished drawing. Don't wrap this in on_success.
-     on_success returns immediately *)
-  Lwt_mvar.take finished_drawing
