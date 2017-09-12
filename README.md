@@ -1,3 +1,17 @@
+Run with:
+
+LWT_LOG="clock -> debug" ./driver.native --bootrom --speed 0.0  
+
+Things:
+
+- Takes .016 just to do the yield loop. feels not good.
+- .06 potential when rendering white screen. current with actual content is .12
+- Must propagate through the matrix, and not tiles lists
+
+
+
+
+=============================================================================
 # IMPORTANT!!!
 
 To RENDER with `step_frame`:
