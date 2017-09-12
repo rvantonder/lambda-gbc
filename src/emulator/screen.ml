@@ -200,14 +200,16 @@ let render matrix storage =
   Format.sprintf
     "x offset: %d; y offset: %d" scroll_offset_x scroll_offset_y;
   match get_tiles_new storage with
+  (*match Some () with*)
   | Some tiles ->
+    (* .06 potential *)
     for i = 0 to 143 do
       for j = 0 to 159 do
         let r,g,b =
           List.nth_exn tiles (i+scroll_offset_y)
           |> fun row -> List.nth_exn row (j+scroll_offset_x)
         in
-        let point : LTerm_draw.point = matrix.(i).(j) in
+        (*let r,g,b = 255, 255, 255 in*)
         matrix.(i).(j*2) <-
           { matrix.(i).(j) with
             LTerm_draw.background = LTerm_style.rgb r g b };
