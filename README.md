@@ -1,3 +1,6 @@
+ZOOM OUT ALL THE WAY + 1. THE CHANGE IS THAT YOU CAN DO +1 A FEW MORE TIMES BUT I DIDNT COUNT.
+
+
 Run with:
 
 LWT_LOG="clock -> debug" ./driver.native --bootrom --speed 0.0  
